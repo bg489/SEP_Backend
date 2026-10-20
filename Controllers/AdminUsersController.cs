@@ -17,7 +17,8 @@ namespace AutoScenarioX.AuthApi.Controllers;
 public sealed class AdminUsersController(
     UserManager<ApplicationUser> userManager,
     RoleManager<IdentityRole<Guid>> roleManager,
-    AuthDbContext database) : ControllerBase
+    AuthDbContext database,
+    AuditLogWriter auditLog) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IEnumerable<AuthUserResponse>>(StatusCodes.Status200OK)]
@@ -96,6 +97,7 @@ public sealed class AdminUsersController(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        await auditLog.WriteAsync(User, "Change user role", $"{user.Email} → {request.Role}", "Success", cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return Ok(AuthUserResponse.From(user, request.Role));
     }

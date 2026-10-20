@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AutoScenarioX.AuthApi.Auth;
 using AutoScenarioX.AuthApi.Contracts;
+using AutoScenarioX.AuthApi.Data;
 using AutoScenarioX.AuthApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -17,7 +18,8 @@ public sealed class AuthController(
     SignInManager<ApplicationUser> signInManager,
     IJwtTokenService tokenService,
     IWebHostEnvironment environment,
-    ILogger<AuthController> logger) : ControllerBase
+    ILogger<AuthController> logger,
+    AuditLogWriter auditLog) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -59,8 +61,9 @@ public sealed class AuthController(
                 new MessageResponse("The account could not be assigned its initial role."));
         }
 
-        return StatusCode(StatusCodes.Status201Created,
-            await CreateSessionAsync(user, role, cancellationToken));
+        var session = await CreateSessionAsync(user, role, cancellationToken);
+        await auditLog.WriteAsync(user.FullName, "Register account", user.Id.ToString(), "Success", cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, session);
     }
 
     [AllowAnonymous]
@@ -97,7 +100,9 @@ public sealed class AuthController(
                 new MessageResponse("This account does not have an application role."));
         }
 
-        return Ok(await CreateSessionAsync(user, role, cancellationToken));
+        var session = await CreateSessionAsync(user, role, cancellationToken);
+        await auditLog.WriteAsync(user.FullName, "Sign in", user.Id.ToString(), "Success", cancellationToken);
+        return Ok(session);
     }
 
     [Authorize]
