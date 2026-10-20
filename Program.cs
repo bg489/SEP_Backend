@@ -39,6 +39,8 @@ if (string.IsNullOrWhiteSpace(jwtSigningKey) || Encoding.UTF8.GetByteCount(jwtSi
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddDbContext<AuthDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddScoped<WorkflowDocumentRepository>();
+builder.Services.AddScoped<AuditLogWriter>();
 
 builder.Services
     .AddIdentityCore<ApplicationUser>(options =>

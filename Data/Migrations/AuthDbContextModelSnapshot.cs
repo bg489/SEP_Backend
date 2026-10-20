@@ -93,6 +93,30 @@ namespace AutoScenarioX.AuthApi.Data.Migrations
                     b.ToTable("users", "app_auth");
                 });
 
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.WorkflowDocument", b =>
+                {
+                    b.Property<string>("Area")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Area", "Key");
+
+                    b.HasIndex("Area", "UpdatedAt");
+
+                    b.ToTable("documents", "app_workflow");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
                 {
                     b.Property<Guid>("Id")

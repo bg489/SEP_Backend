@@ -8,6 +8,8 @@ namespace AutoScenarioX.AuthApi.Data;
 public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
+    public DbSet<WorkflowDocument> WorkflowDocuments => Set<WorkflowDocument>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -20,5 +22,15 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options)
         builder.Entity<IdentityUserLogin<Guid>>().ToTable("user_logins");
         builder.Entity<IdentityRoleClaim<Guid>>().ToTable("role_claims");
         builder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens");
+        builder.Entity<WorkflowDocument>(entity =>
+        {
+            entity.ToTable("documents", "app_workflow");
+            entity.HasKey(document => new { document.Area, document.Key });
+            entity.Property(document => document.Area).HasMaxLength(80);
+            entity.Property(document => document.Key).HasMaxLength(160);
+            entity.Property(document => document.Payload).HasColumnType("jsonb").IsRequired();
+            entity.Property(document => document.UpdatedAt).IsRequired();
+            entity.HasIndex(document => new { document.Area, document.UpdatedAt });
+        });
     }
 }
