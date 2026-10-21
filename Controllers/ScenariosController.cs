@@ -18,7 +18,7 @@ namespace AutoScenarioX.AuthApi.Controllers;
 public sealed class ScenariosController(WorkflowDocumentRepository repository, AuditLogWriter auditLog) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly HashSet<string> Statuses = ["Draft", "In review", "Active", "Approved", "Archived"];
+    private static readonly HashSet<string> Statuses = ["Draft", "Active", "Archived"];
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ScenarioResponse>>> List(
@@ -153,20 +153,45 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
     }
 
     [HttpPut("{id}/status")]
+    [Authorize(Roles = RoleNames.ScenarioEngineer + "," + RoleNames.Administrator)]
     public async Task<ActionResult<ScenarioResponse>> SetStatus(string id, ScenarioStatusRequest request, CancellationToken cancellationToken)
     {
         if (!Statuses.Contains(request.Status)) return BadRequest(new MessageResponse("Unsupported scenario status."));
-        if (request.Status == "Active" && !User.IsInRole(RoleNames.TestReviewer) && !User.IsInRole(RoleNames.Administrator))
-            return Forbid();
-        if (request.Status != "Active" && !User.IsInRole(RoleNames.ScenarioEngineer) && !User.IsInRole(RoleNames.TestReviewer) && !User.IsInRole(RoleNames.Administrator))
-            return Forbid();
         var current = await repository.GetAsync<ScenarioResponse>("scenario", id, cancellationToken);
         if (current is null) return NotFound(new MessageResponse("Scenario not found."));
+        if (request.Status == "Active")
+        {
+            var issues = ValidateConfiguration(current);
+            if (issues.Count > 0)
+                return BadRequest(new MessageResponse("Scenario configuration is not ready for testing: " + string.Join("; ", issues)));
+        }
         var updated = current with { Status = request.Status };
         await repository.SaveAsync("scenario", id, updated, cancellationToken);
         await AppendVersionAsync(updated, string.IsNullOrWhiteSpace(request.Note) ? $"Status changed to {request.Status}" : request.Note, cancellationToken);
-        await auditLog.WriteAsync(User, $"Scenario status: {request.Status}", id, "Success", cancellationToken);
+        var action = request.Status == "Active" ? "System validated scenario configuration" : $"Scenario status: {request.Status}";
+        await auditLog.WriteAsync(User, action, id, "Success", cancellationToken);
         return Ok(updated);
+    }
+
+    private static List<string> ValidateConfiguration(ScenarioResponse scenario)
+    {
+        var issues = new List<string>();
+        if (string.IsNullOrWhiteSpace(scenario.Name)) issues.Add("scenario name is required");
+        if (scenario.Map is not ("Town01" or "Town02" or "Town03" or "Town04" or "Town05" or "Town06" or "Town07" or "Town10HD"))
+            issues.Add("a supported CARLA map is required");
+        if (scenario.Category is not ("Urban" or "Highway" or "Intersection" or "Rural" or "Parking"))
+            issues.Add("a supported scenario category is required");
+        if (scenario.Weather is not ("Clear noon" or "Clear morning" or "Sunset" or "Overcast" or "Light rain" or "Heavy rain" or "Fog"))
+            issues.Add("a supported weather preset is required");
+        if (string.IsNullOrWhiteSpace(scenario.RouteDescription)) issues.Add("route description is required");
+        if (scenario.EgoVehicle is not ("vehicle.tesla.model3" or "vehicle.lincoln.mkz_2020" or "vehicle.mercedes.coupe" or "vehicle.audi.tt"))
+            issues.Add("a supported ego vehicle is required");
+        if (scenario.TrafficDensity is not ("Low" or "Medium" or "High")) issues.Add("traffic density is required");
+        if (scenario.PedestrianCount is not (>= 0 and <= 100)) issues.Add("pedestrian count must be between 0 and 100");
+        if (scenario.ObstacleCount is not (>= 0 and <= 100)) issues.Add("obstacle count must be between 0 and 100");
+        if (string.IsNullOrWhiteSpace(scenario.TriggerCondition)) issues.Add("trigger condition is required");
+        if (string.IsNullOrWhiteSpace(scenario.Actions)) issues.Add("scenario action is required");
+        return issues;
     }
 
     [HttpGet("{id}/versions")]
