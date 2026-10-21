@@ -50,7 +50,7 @@ Khởi động lại Vite sau khi sửa file môi trường. Xác thực luôn d
 
 ## Roles and access
 
-Supported roles are `Scenario Engineer`, `Test Engineer`, `Test Reviewer`, and `Administrator`. Registration allows users to select the first three roles; only an administrator can assign the Administrator role. Scenario authoring and campaign management endpoints enforce their matching roles. Root-cause confirmation is restricted to Test Reviewer and Administrator. Node, oracle, CARLA, and analytics configuration writes plus audit-log reads require Administrator.
+Supported roles are `Scenario Engineer`, `Test Engineer`, `Test Reviewer`, and `Administrator`. Registration allows users to select the first three roles; only an administrator can assign the Administrator role. Scenario authoring and campaign management endpoints enforce their matching roles. The system validates a scenario's required configuration before marking it Active; no Test Reviewer approval is required. Root-cause confirmation is restricted to Test Reviewer and Administrator. Node, oracle, CARLA, and analytics configuration writes plus audit-log reads require Administrator.
 
 Login and registration return a 20-minute JWT. Login, registration, and password-reset requests are rate-limited. Password reset creates Identity tokens, but production email delivery still needs a mail provider.
 
@@ -67,7 +67,7 @@ Login and registration return a 20-minute JWT. Login, registration, and password
 | `POST` | `/api/scenarios/import` | Validate and persist an imported scenario and its original XML artifact |
 | `POST` | `/api/scenarios/{id}/versions` | Save a new immutable scenario version |
 | `POST` | `/api/scenarios/{id}/clone` | Clone a scenario into a draft |
-| `GET`, `PUT` | `/api/scenarios/{id}/versions`, `/api/scenarios/{id}/status` | Version history and review state |
+| `GET`, `PUT` | `/api/scenarios/{id}/versions`, `/api/scenarios/{id}/status` | Version history and readiness after system validation |
 | `PATCH` | `/api/scenarios/{id}/execution-metrics` | Update execution summary metrics |
 | `GET`, `POST` | `/api/campaigns` | List and create campaigns |
 | `PATCH` | `/api/campaigns/{id}` | Update campaign settings or status |
@@ -98,7 +98,7 @@ Install the official ScenarioRunner `v0.9.16` source and its Python 3.12 environ
 
 This places ScenarioRunner at `C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner`. The CARLA root defaults to `C:\Users\admin\Downloads\CARLA_0.9.16` in Development; override `Carla:RootPath` or `CARLA_ROOT` if it is elsewhere. In the Administrator CARLA settings screen, save that ScenarioRunner path, run **Test installation**, then **Activate worker**. The test runs `scenario_runner.py --version` with the configured Python dependencies; it does not start CARLA. CARLA starts only when an actual run is claimed.
 
-Import a real `.xosc`/`.osc` file in the Scenario Engineer screen. The API validates the XML structure and saves the original source by scenario version; scenario versions and clones retain that artifact. Only an Active/Approved scenario with a saved artifact can be queued. A missing file, wrong Python dependency, absent CARLA install, or failed run is reported in the run state and log instead of being marked as a pass.
+Import a real `.xosc`/`.osc` file in the Scenario Engineer screen. The API validates the XML structure and saves the original source by scenario version; scenario versions and clones retain that artifact. Open the scenario in the editor and choose **Validate configuration**. The frontend and API check the required scenario settings, then the system marks a valid configuration Active automatically. There is no manual scenario approval step. Only an Active/Approved scenario with a saved artifact can be queued. A missing file, wrong Python dependency, absent CARLA install, or failed run is reported in the run state and log instead of being marked as a pass.
 
 Worker callbacks from a separate worker require a secret of at least 32 bytes. It is stored in .NET User Secrets as `Worker:CallbackKey`; create or rotate it with:
 
@@ -118,7 +118,7 @@ Cài bản ScenarioRunner `v0.9.16` cùng môi trường Python 3.12 và CARLA w
 .\scripts\Install-ScenarioRunner.ps1
 ```
 
-Trong giao diện Administrator, nhập `C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner`, chọn **Save settings**, **Test installation**, rồi **Activate worker**. Kiểm tra bản cài chỉ chạy `scenario_runner.py --version`; CARLA chỉ được khởi động khi worker nhận run thật. Hãy import tệp `.xosc`/`.osc` rồi duyệt kịch bản sang Active/Approved trước khi thêm vào campaign.
+Trong giao diện Administrator, nhập `C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner`, chọn **Save settings**, **Test installation**, rồi **Activate worker**. Kiểm tra bản cài chỉ chạy `scenario_runner.py --version`; CARLA chỉ được khởi động khi worker nhận run thật. Hãy import tệp `.xosc`/`.osc`, mở kịch bản trong Scenario Editor, điền cấu hình còn thiếu rồi chọn **Validate configuration**. Hệ thống tự chuyển kịch bản hợp lệ sang Active; không cần Test Reviewer/Admin duyệt.
 
 Để cho phép worker ngoài backend gửi callback, tạo khóa riêng trong User Secrets:
 
