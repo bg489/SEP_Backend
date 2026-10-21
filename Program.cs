@@ -28,6 +28,11 @@ if (!string.Equals(postgresConnection.Database, "autoscenariox", StringCompariso
     throw new InvalidOperationException(
         "The authentication API must use the PostgreSQL database named 'autoscenariox'.");
 }
+if (string.IsNullOrWhiteSpace(postgresConnection.Password))
+{
+    throw new InvalidOperationException(
+        "The PostgreSQL connection string has no password. Run '.\\scripts\\Set-LocalSecrets.ps1' and enter your PostgreSQL password, then restart the API.");
+}
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AutoScenarioX.AuthApi";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "AutoScenarioX.Frontend";

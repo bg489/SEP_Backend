@@ -111,6 +111,11 @@ public sealed class WorkflowDocumentRepository(AuthDbContext database)
     private async Task SaveAsync<TRecord>(DbSet<TRecord> table, string key, string payload, Func<TRecord> factory, CancellationToken cancellationToken)
         where TRecord : WorkflowRecord
     {
+        // Workflow records share an EF TPC hierarchy for column reuse, but their
+        // domain keys are scoped to separate tables (for example, a scenario and
+        // its version intentionally use the same key). Keep writes isolated from
+        // other tracked workflow rows so EF does not treat those keys as duplicates.
+        database.ChangeTracker.Clear();
         var record = await table.SingleOrDefaultAsync(item => item.Key == key, cancellationToken);
         if (record is null)
         {
@@ -120,25 +125,43 @@ public sealed class WorkflowDocumentRepository(AuthDbContext database)
         }
         record.Payload = payload;
         record.UpdatedAt = DateTimeOffset.UtcNow;
-        await database.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        finally
+        {
+            database.ChangeTracker.Clear();
+        }
     }
 
     private async Task ReplaceAsync<TRecord, TValue>(DbSet<TRecord> table, IEnumerable<TValue> values, Func<TValue, string> keySelector, Func<TRecord> factory, CancellationToken cancellationToken)
         where TRecord : WorkflowRecord
     {
+        database.ChangeTracker.Clear();
         await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
-        table.RemoveRange(await table.ToListAsync(cancellationToken));
-        var updatedAt = DateTimeOffset.UtcNow;
-        foreach (var value in values)
+        try
         {
-            var record = factory();
-            record.Key = keySelector(value);
-            record.Payload = JsonSerializer.Serialize(value, JsonOptions);
-            record.UpdatedAt = updatedAt;
-            table.Add(record);
+            table.RemoveRange(await table.ToListAsync(cancellationToken));
+            await database.SaveChangesAsync(cancellationToken);
+            database.ChangeTracker.Clear();
+
+            var updatedAt = DateTimeOffset.UtcNow;
+            foreach (var value in values)
+            {
+                var record = factory();
+                record.Key = keySelector(value);
+                record.Payload = JsonSerializer.Serialize(value, JsonOptions);
+                record.UpdatedAt = updatedAt;
+                table.Add(record);
+            }
+            await database.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
-        await database.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        finally
+        {
+            database.ChangeTracker.Clear();
+        }
     }
 
     private static ArgumentOutOfRangeException UnknownArea(string area) =>
