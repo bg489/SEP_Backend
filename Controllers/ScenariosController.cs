@@ -7,6 +7,7 @@ using System.Xml.Linq;
 using AutoScenarioX.AuthApi.Auth;
 using AutoScenarioX.AuthApi.Contracts;
 using AutoScenarioX.AuthApi.Data;
+using AutoScenarioX.AuthApi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,6 +20,20 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<string> Statuses = ["Draft", "Active", "Archived"];
+    private static readonly HashSet<string> VehicleBlueprints = new(StringComparer.Ordinal)
+    {
+        "vehicle.audi.a2", "vehicle.audi.etron", "vehicle.audi.tt", "vehicle.bmw.grandtourer",
+        "vehicle.chevrolet.impala", "vehicle.citroen.c3", "vehicle.dodge.charger_police", "vehicle.ford.mustang",
+        "vehicle.jeep.wrangler_rubicon", "vehicle.lincoln.mkz_2017", "vehicle.mercedes.coupe", "vehicle.micro.microlino",
+        "vehicle.mini.cooper_s", "vehicle.nissan.micra", "vehicle.nissan.patrol", "vehicle.seat.leon",
+        "vehicle.tesla.model3", "vehicle.toyota.prius", "vehicle.dodge.charger_2020", "vehicle.dodge.charger_police_2020",
+        "vehicle.ford.crown", "vehicle.lincoln.mkz_2020", "vehicle.mercedes.coupe_2020", "vehicle.mini.cooper_s_2021",
+        "vehicle.nissan.patrol_2021", "vehicle.carlamotors.carlacola", "vehicle.carlamotors.european_hgv",
+        "vehicle.carlamotors.firetruck", "vehicle.tesla.cybertruck", "vehicle.volkswagen.t2", "vehicle.ford.ambulance",
+        "vehicle.mercedes.sprinter", "vehicle.volkswagen.t2_2021", "vehicle.mitsubishi.fusorosa",
+        "vehicle.harley-davidson.low_rider", "vehicle.kawasaki.ninja", "vehicle.vespa.zx125", "vehicle.yamaha.yzf",
+        "vehicle.bh.crossbike", "vehicle.diamondback.century", "vehicle.gazelle.omafiets"
+    };
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ScenarioResponse>>> List(
@@ -42,14 +57,22 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
     {
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Map))
             return BadRequest(new MessageResponse("Scenario name and map are required."));
-        var now = DateTimeOffset.UtcNow;
+        if (request.ExecutionMode != "CARLA actors")
+            return BadRequest(new MessageResponse("New scenarios must use CARLA actor execution. Import an .xosc/.osc file to run an OpenSCENARIO source."));
         var scenario = new ScenarioResponse(
             NewId("SCN"), request.Name.Trim(), request.Description?.Trim() ?? string.Empty,
             request.Map.Trim(), request.Category.Trim(), request.Severity.Trim(), "Draft", "v1.0",
-            request.Weather.Trim(), 2, 0, 0, "Never", ActorName(),
+            request.Weather.Trim(), 1 + Math.Clamp(request.TrafficVehicleCount, 0, 50) + Math.Clamp(request.PedestrianCount, 0, 100) + Math.Clamp(request.ObstacleCount, 0, 100), 0, 0, "Never", ActorName(),
             [request.Category.Trim().ToLowerInvariant(), request.Weather.Trim().ToLowerInvariant().Replace(' ', '-')],
-            PriorityFor(request.Severity));
+            PriorityFor(request.Severity), request.RouteDescription.Trim(), request.EgoVehicle.Trim(), request.TrafficDensity.Trim(),
+            request.PedestrianCount, request.ObstacleCount, request.TriggerCondition.Trim(), request.Actions.Trim(), null,
+            request.ExecutionMode.Trim(), request.TrafficVehicle.Trim(), request.TrafficVehicleCount,
+            request.PedestrianBlueprint.Trim(), request.ObstacleBlueprint.Trim(), request.ExecutionDurationSeconds, request.SpeedLimitOffsetPercent);
+        var issues = ValidateConfiguration(scenario);
+        if (issues.Count > 0) return BadRequest(new MessageResponse("Scenario configuration is invalid: " + string.Join("; ", issues)));
         await SaveScenarioAsync(scenario, "Scenario created", cancellationToken);
+        if (scenario.ExecutionMode == "CARLA actors")
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(scenario.Id, scenario.Version), CreateNativeArtifact(scenario), cancellationToken);
         await auditLog.WriteAsync(User, "Create scenario", scenario.Id, "Success", cancellationToken);
         return CreatedAtAction(nameof(List), new { id = scenario.Id }, scenario);
     }
@@ -64,19 +87,8 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             return BadRequest(new MessageResponse("Only .xosc and .osc files can be imported."));
         if (string.IsNullOrWhiteSpace(request.SourceContent) || Encoding.UTF8.GetByteCount(request.SourceContent) > 10 * 1024 * 1024)
             return BadRequest(new MessageResponse("Scenario files must contain valid XML and be no larger than 10 MB."));
-        try
-        {
-            using var input = new StringReader(request.SourceContent);
-            using var reader = XmlReader.Create(input, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            var document = XDocument.Load(reader);
-            if (document.Root?.Name.LocalName != "OpenSCENARIO" ||
-                !document.Descendants().Any(element => element.Name.LocalName == "Storyboard"))
-                return BadRequest(new MessageResponse("The file must be OpenSCENARIO XML containing a Storyboard."));
-        }
-        catch (XmlException)
-        {
-            return BadRequest(new MessageResponse("The selected scenario file is not valid XML."));
-        }
+        var sourceIssue = OpenScenarioSource.Validate(request.SourceContent);
+        if (sourceIssue is not null) return BadRequest(new MessageResponse(sourceIssue));
 
         var scenario = request.Scenario with
         {
@@ -87,7 +99,22 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             PassRate = 0,
             LastRun = "Never",
             Owner = ActorName(),
-            SourceFileName = Path.GetFileName(request.SourceFileName)
+            SourceFileName = Path.GetFileName(request.SourceFileName),
+            Actors = XDocument.Parse(request.SourceContent).Descendants().Count(element => element.Name.LocalName == "ScenarioObject"),
+            ExecutionMode = "OpenSCENARIO source",
+            RouteDescription = request.Scenario.RouteDescription ?? "Imported OpenSCENARIO route",
+            EgoVehicle = request.Scenario.EgoVehicle ?? "vehicle.tesla.model3",
+            TrafficDensity = request.Scenario.TrafficDensity ?? "Medium",
+            PedestrianCount = request.Scenario.PedestrianCount ?? 0,
+            ObstacleCount = request.Scenario.ObstacleCount ?? 0,
+            TriggerCondition = request.Scenario.TriggerCondition ?? "Defined by imported OpenSCENARIO",
+            Actions = request.Scenario.Actions ?? "Defined by imported OpenSCENARIO",
+            TrafficVehicle = request.Scenario.TrafficVehicle ?? "vehicle.lincoln.mkz_2020",
+            TrafficVehicleCount = request.Scenario.TrafficVehicleCount ?? 0,
+            PedestrianBlueprint = request.Scenario.PedestrianBlueprint ?? "walker.pedestrian.0001",
+            ObstacleBlueprint = request.Scenario.ObstacleBlueprint ?? "static.prop.streetbarrier",
+            ExecutionDurationSeconds = request.Scenario.ExecutionDurationSeconds ?? 30,
+            SpeedLimitOffsetPercent = request.Scenario.SpeedLimitOffsetPercent ?? 0
         };
         var sourceBytes = Encoding.UTF8.GetBytes(request.SourceContent);
         var artifact = new ScenarioArtifactResponse(
@@ -116,12 +143,42 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             Id = id,
             Version = NextVersion(current.Version),
             Status = "Draft",
-            Owner = current.Owner
+            Owner = current.Owner,
+            ExecutionMode = json["executionMode"]?.GetValue<string>() ?? current.ExecutionMode ??
+                (current.SourceFileName is null ? "CARLA actors" : "OpenSCENARIO source"),
+            EgoVehicle = json["egoVehicle"]?.GetValue<string>() ?? current.EgoVehicle ?? "vehicle.tesla.model3",
+            TrafficDensity = json["trafficDensity"]?.GetValue<string>() ?? current.TrafficDensity ?? "Medium",
+            TrafficVehicle = json["trafficVehicle"]?.GetValue<string>() ?? current.TrafficVehicle ?? "vehicle.lincoln.mkz_2020",
+            TrafficVehicleCount = json["trafficVehicleCount"]?.GetValue<int>() ?? current.TrafficVehicleCount ?? 0,
+            PedestrianBlueprint = json["pedestrianBlueprint"]?.GetValue<string>() ?? current.PedestrianBlueprint ?? "walker.pedestrian.0001",
+            ObstacleBlueprint = json["obstacleBlueprint"]?.GetValue<string>() ?? current.ObstacleBlueprint ?? "static.prop.streetbarrier",
+            ExecutionDurationSeconds = json["executionDurationSeconds"]?.GetValue<int>() ?? current.ExecutionDurationSeconds ?? 30,
+            SpeedLimitOffsetPercent = json["speedLimitOffsetPercent"]?.GetValue<int>() ?? current.SpeedLimitOffsetPercent ?? 0,
+            RouteDescription = json["routeDescription"]?.GetValue<string>() ?? current.RouteDescription ?? "Start → route → goal",
+            TriggerCondition = json["triggerCondition"]?.GetValue<string>() ?? current.TriggerCondition ?? "Simulation starts",
+            Actions = json["actions"]?.GetValue<string>() ?? current.Actions ?? "Autopilot follows map traffic rules",
+            Actors = 1 + Math.Clamp(json["trafficVehicleCount"]?.GetValue<int>() ?? current.TrafficVehicleCount ?? 0, 0, 50) +
+                Math.Clamp(json["pedestrianCount"]?.GetValue<int>() ?? current.PedestrianCount ?? 0, 0, 100) +
+                Math.Clamp(json["obstacleCount"]?.GetValue<int>() ?? current.ObstacleCount ?? 0, 0, 100)
         };
+        var issues = ValidateConfiguration(next);
+        if (issues.Count > 0) return BadRequest(new MessageResponse("Scenario configuration is invalid: " + string.Join("; ", issues)));
+        if (next.ExecutionMode == "OpenSCENARIO source" &&
+            (string.IsNullOrWhiteSpace(current.SourceFileName) ||
+             !current.SourceFileName.EndsWith(".xosc", StringComparison.OrdinalIgnoreCase) &&
+             !current.SourceFileName.EndsWith(".osc", StringComparison.OrdinalIgnoreCase)))
+            return BadRequest(new MessageResponse("This scenario has no imported OpenSCENARIO source. Use the CARLA actor scene format or import a .xosc/.osc file."));
+        if (next.ExecutionMode == "CARLA actors") next = next with { SourceFileName = null };
+        else next = next with { Actors = current.Actors };
         await SaveScenarioAsync(next, "Edited scenario definition", cancellationToken);
-        var source = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, current.Version), cancellationToken);
-        if (source is not null)
-            await repository.SaveAsync("scenario-artifact", ArtifactKey(id, next.Version), source with { Version = next.Version }, cancellationToken);
+        if (next.ExecutionMode == "CARLA actors")
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(id, next.Version), CreateNativeArtifact(next), cancellationToken);
+        else
+        {
+            var source = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, current.Version), cancellationToken);
+            if (source is not null)
+                await repository.SaveAsync("scenario-artifact", ArtifactKey(id, next.Version), source with { Version = next.Version }, cancellationToken);
+        }
         await auditLog.WriteAsync(User, "Create scenario version", $"{id} {next.Version}", "Success", cancellationToken);
         return Ok(next);
     }
@@ -146,8 +203,10 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
         };
         await SaveScenarioAsync(copy, $"Cloned from {id}", cancellationToken);
         var source = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, original.Version), cancellationToken);
-        if (source is not null)
-            await repository.SaveAsync("scenario-artifact", ArtifactKey(copy.Id, copy.Version), source with { ScenarioId = copy.Id }, cancellationToken);
+        if (copy.ExecutionMode == "CARLA actors")
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(copy.Id, copy.Version), CreateNativeArtifact(copy), cancellationToken);
+        else if (source is not null)
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(copy.Id, copy.Version), source with { ScenarioId = copy.Id, Version = copy.Version }, cancellationToken);
         await auditLog.WriteAsync(User, "Clone scenario", $"{id} → {copy.Id}", "Success", cancellationToken);
         return CreatedAtAction(nameof(List), new { id = copy.Id }, copy);
     }
@@ -162,6 +221,16 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
         if (request.Status == "Active")
         {
             var issues = ValidateConfiguration(current);
+            var artifact = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, current.Version), cancellationToken);
+            if (artifact is null || current.ExecutionMode == "CARLA actors" && !artifact.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                issues.Add("a saved execution definition is required for this version");
+            if (current.ExecutionMode == "OpenSCENARIO source" && artifact is not null &&
+                !artifact.FileName.EndsWith(".xosc", StringComparison.OrdinalIgnoreCase) &&
+                !artifact.FileName.EndsWith(".osc", StringComparison.OrdinalIgnoreCase))
+                issues.Add("the imported OpenSCENARIO source file is missing");
+            else if (current.ExecutionMode == "OpenSCENARIO source" && artifact is not null &&
+                OpenScenarioSource.Validate(artifact.Content, requireCriteria: true) is { } sourceIssue)
+                issues.Add(sourceIssue);
             if (issues.Count > 0)
                 return BadRequest(new MessageResponse("Scenario configuration is not ready for testing: " + string.Join("; ", issues)));
         }
@@ -183,15 +252,34 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             issues.Add("a supported scenario category is required");
         if (scenario.Weather is not ("Clear noon" or "Clear morning" or "Sunset" or "Overcast" or "Light rain" or "Heavy rain" or "Fog"))
             issues.Add("a supported weather preset is required");
+        if (scenario.ExecutionMode == "OpenSCENARIO source") return issues;
         if (string.IsNullOrWhiteSpace(scenario.RouteDescription)) issues.Add("route description is required");
-        if (scenario.EgoVehicle is not ("vehicle.tesla.model3" or "vehicle.lincoln.mkz_2020" or "vehicle.mercedes.coupe" or "vehicle.audi.tt"))
-            issues.Add("a supported ego vehicle is required");
+        if (scenario.EgoVehicle is null || !VehicleBlueprints.Contains(scenario.EgoVehicle))
+            issues.Add("a supported CARLA ego vehicle blueprint is required");
         if (scenario.TrafficDensity is not ("Low" or "Medium" or "High")) issues.Add("traffic density is required");
         if (scenario.PedestrianCount is not (>= 0 and <= 100)) issues.Add("pedestrian count must be between 0 and 100");
         if (scenario.ObstacleCount is not (>= 0 and <= 100)) issues.Add("obstacle count must be between 0 and 100");
+        if (scenario.TrafficVehicle is null || !VehicleBlueprints.Contains(scenario.TrafficVehicle))
+            issues.Add("a supported CARLA traffic vehicle blueprint is required");
+        if (scenario.TrafficVehicleCount is not (>= 0 and <= 50)) issues.Add("traffic vehicle count must be between 0 and 50");
+        if (scenario.PedestrianBlueprint is null || !System.Text.RegularExpressions.Regex.IsMatch(scenario.PedestrianBlueprint, "^walker\\.pedestrian\\.\\d{4}$"))
+            issues.Add("a valid CARLA pedestrian blueprint is required");
+        if (scenario.ObstacleBlueprint is not ("static.prop.streetbarrier" or "static.prop.trafficcone01" or "static.prop.warningconstruction" or "static.prop.trafficwarning"))
+            issues.Add("a supported obstacle blueprint is required");
+        if (scenario.ExecutionDurationSeconds is not (>= 5 and <= 600)) issues.Add("execution duration must be between 5 and 600 seconds");
+        if (scenario.SpeedLimitOffsetPercent is not (>= -30 and <= 70)) issues.Add("speed offset must be between -30 and 70 percent");
+        if (scenario.ExecutionMode is not ("CARLA actors" or "OpenSCENARIO source")) issues.Add("a supported execution mode is required");
         if (string.IsNullOrWhiteSpace(scenario.TriggerCondition)) issues.Add("trigger condition is required");
         if (string.IsNullOrWhiteSpace(scenario.Actions)) issues.Add("scenario action is required");
         return issues;
+    }
+
+    private static ScenarioArtifactResponse CreateNativeArtifact(ScenarioResponse scenario)
+    {
+        var content = JsonSerializer.Serialize(scenario, JsonOptions);
+        var bytes = Encoding.UTF8.GetBytes(content);
+        return new ScenarioArtifactResponse(scenario.Id, scenario.Version, $"{scenario.Id}_{scenario.Version}.json", content,
+            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
     }
 
     [HttpGet("{id}/versions")]

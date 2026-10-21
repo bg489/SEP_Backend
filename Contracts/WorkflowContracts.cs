@@ -24,7 +24,14 @@ public sealed record ScenarioResponse(
     int? ObstacleCount = null,
     string? TriggerCondition = null,
     string? Actions = null,
-    string? SourceFileName = null);
+    string? SourceFileName = null,
+    string? ExecutionMode = null,
+    string? TrafficVehicle = null,
+    int? TrafficVehicleCount = null,
+    string? PedestrianBlueprint = null,
+    string? ObstacleBlueprint = null,
+    int? ExecutionDurationSeconds = null,
+    int? SpeedLimitOffsetPercent = null);
 
 public sealed record CreateScenarioRequest(
     string Name,
@@ -32,7 +39,21 @@ public sealed record CreateScenarioRequest(
     string Map,
     string Category,
     string Severity,
-    string Weather);
+    string Weather,
+    string RouteDescription = "Start → route → goal",
+    string EgoVehicle = "vehicle.tesla.model3",
+    string TrafficDensity = "Medium",
+    int PedestrianCount = 0,
+    int ObstacleCount = 0,
+    string TriggerCondition = "Simulation starts",
+    string Actions = "Autopilot follows map traffic rules",
+    string ExecutionMode = "CARLA actors",
+    string TrafficVehicle = "vehicle.lincoln.mkz_2020",
+    int TrafficVehicleCount = 3,
+    string PedestrianBlueprint = "walker.pedestrian.0001",
+    string ObstacleBlueprint = "static.prop.streetbarrier",
+    int ExecutionDurationSeconds = 30,
+    int SpeedLimitOffsetPercent = 0);
 
 public sealed record ScenarioImportRequest(ScenarioResponse Scenario, string SourceFileName, string SourceContent);
 public sealed record ScenarioArtifactResponse(string ScenarioId, string Version, string FileName, string Content, string Sha256);
@@ -140,6 +161,7 @@ public sealed record WorkerRunCallbackRequest(
     List<FailureEvidenceResponse>? Evidence = null,
     int? DurationSeconds = null);
 public sealed record RunArtifactResponse(string RunId, string FileName, string ContentType, string Content, string CreatedAt);
+public sealed record ExecutionOptionsSnapshotResponse(int TimeoutSeconds, List<OracleRuleResponse> OracleRules);
 public sealed record OverviewResponse(
     int TotalScenarios,
     int ActiveCampaigns,
