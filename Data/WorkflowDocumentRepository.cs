@@ -4,65 +4,143 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AutoScenarioX.AuthApi.Data;
 
+/// <summary>
+/// Persists each workflow area in its own PostgreSQL table while keeping the API's
+/// existing JSON contracts stable during frontend/backend integration.
+/// </summary>
 public sealed class WorkflowDocumentRepository(AuthDbContext database)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<T?> GetAsync<T>(string area, string key, CancellationToken cancellationToken)
+    public Task<T?> GetAsync<T>(string area, string key, CancellationToken cancellationToken) => area switch
     {
-        var document = await database.WorkflowDocuments.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Area == area && item.Key == key, cancellationToken);
-        return document is null ? default : JsonSerializer.Deserialize<T>(document.Payload, JsonOptions);
+        "scenario" => GetAsync<ScenarioRecord, T>(database.Scenarios, key, cancellationToken),
+        "scenario-versions" => GetAsync<ScenarioVersionRecord, T>(database.ScenarioVersions, key, cancellationToken),
+        "scenario-artifact" => GetAsync<ScenarioArtifactRecord, T>(database.ScenarioArtifacts, key, cancellationToken),
+        "campaign" => GetAsync<CampaignRecord, T>(database.Campaigns, key, cancellationToken),
+        "campaign-ranking" => GetAsync<CampaignRankingRecord, T>(database.CampaignRankings, key, cancellationToken),
+        "run" => GetAsync<ScenarioRunRecord, T>(database.ScenarioRuns, key, cancellationToken),
+        "run-artifact" => GetAsync<RunArtifactRecord, T>(database.RunArtifacts, key, cancellationToken),
+        "failure" => GetAsync<FailureClusterRecord, T>(database.FailureClusters, key, cancellationToken),
+        "analytics" => GetAsync<AnalyticsConfigRecord, T>(database.AnalyticsConfigs, key, cancellationToken),
+        "audit" => GetAsync<AuditLogRecord, T>(database.AuditLogs, key, cancellationToken),
+        "integration" => GetAsync<CarlaIntegrationRecord, T>(database.CarlaIntegrations, key, cancellationToken),
+        "worker" => GetAsync<SimulationNodeRecord, T>(database.SimulationNodes, key, cancellationToken),
+        "oracle-rule" => GetAsync<OracleRuleRecord, T>(database.OracleRules, key, cancellationToken),
+        "oracle-profile" => GetAsync<OracleProfileRecord, T>(database.OracleProfiles, key, cancellationToken),
+        _ => throw UnknownArea(area)
+    };
+
+    public Task<List<T>> ListAsync<T>(string area, CancellationToken cancellationToken) => area switch
+    {
+        "scenario" => ListAsync<ScenarioRecord, T>(database.Scenarios, cancellationToken),
+        "scenario-versions" => ListAsync<ScenarioVersionRecord, T>(database.ScenarioVersions, cancellationToken),
+        "scenario-artifact" => ListAsync<ScenarioArtifactRecord, T>(database.ScenarioArtifacts, cancellationToken),
+        "campaign" => ListAsync<CampaignRecord, T>(database.Campaigns, cancellationToken),
+        "campaign-ranking" => ListAsync<CampaignRankingRecord, T>(database.CampaignRankings, cancellationToken),
+        "run" => ListAsync<ScenarioRunRecord, T>(database.ScenarioRuns, cancellationToken),
+        "run-artifact" => ListAsync<RunArtifactRecord, T>(database.RunArtifacts, cancellationToken),
+        "failure" => ListAsync<FailureClusterRecord, T>(database.FailureClusters, cancellationToken),
+        "analytics" => ListAsync<AnalyticsConfigRecord, T>(database.AnalyticsConfigs, cancellationToken),
+        "audit" => ListAsync<AuditLogRecord, T>(database.AuditLogs, cancellationToken),
+        "integration" => ListAsync<CarlaIntegrationRecord, T>(database.CarlaIntegrations, cancellationToken),
+        "worker" => ListAsync<SimulationNodeRecord, T>(database.SimulationNodes, cancellationToken),
+        "oracle-rule" => ListAsync<OracleRuleRecord, T>(database.OracleRules, cancellationToken),
+        "oracle-profile" => ListAsync<OracleProfileRecord, T>(database.OracleProfiles, cancellationToken),
+        _ => throw UnknownArea(area)
+    };
+
+    public Task SaveAsync<T>(string area, string key, T value, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Serialize(value, JsonOptions);
+        return area switch
+        {
+            "scenario" => SaveAsync(database.Scenarios, key, payload, () => new ScenarioRecord(), cancellationToken),
+            "scenario-versions" => SaveAsync(database.ScenarioVersions, key, payload, () => new ScenarioVersionRecord(), cancellationToken),
+            "scenario-artifact" => SaveAsync(database.ScenarioArtifacts, key, payload, () => new ScenarioArtifactRecord(), cancellationToken),
+            "campaign" => SaveAsync(database.Campaigns, key, payload, () => new CampaignRecord(), cancellationToken),
+            "campaign-ranking" => SaveAsync(database.CampaignRankings, key, payload, () => new CampaignRankingRecord(), cancellationToken),
+            "run" => SaveAsync(database.ScenarioRuns, key, payload, () => new ScenarioRunRecord(), cancellationToken),
+            "run-artifact" => SaveAsync(database.RunArtifacts, key, payload, () => new RunArtifactRecord(), cancellationToken),
+            "failure" => SaveAsync(database.FailureClusters, key, payload, () => new FailureClusterRecord(), cancellationToken),
+            "analytics" => SaveAsync(database.AnalyticsConfigs, key, payload, () => new AnalyticsConfigRecord(), cancellationToken),
+            "audit" => SaveAsync(database.AuditLogs, key, payload, () => new AuditLogRecord(), cancellationToken),
+            "integration" => SaveAsync(database.CarlaIntegrations, key, payload, () => new CarlaIntegrationRecord(), cancellationToken),
+            "worker" => SaveAsync(database.SimulationNodes, key, payload, () => new SimulationNodeRecord(), cancellationToken),
+            "oracle-rule" => SaveAsync(database.OracleRules, key, payload, () => new OracleRuleRecord(), cancellationToken),
+            "oracle-profile" => SaveAsync(database.OracleProfiles, key, payload, () => new OracleProfileRecord(), cancellationToken),
+            _ => throw UnknownArea(area)
+        };
     }
 
-    public async Task<List<T>> ListAsync<T>(string area, CancellationToken cancellationToken)
+    public Task ReplaceAsync<T>(string area, IEnumerable<T> values, Func<T, string> keySelector, CancellationToken cancellationToken) => area switch
     {
-        var documents = await database.WorkflowDocuments.AsNoTracking()
-            .Where(item => item.Area == area)
-            .OrderByDescending(item => item.UpdatedAt)
-            .ToListAsync(cancellationToken);
-        return documents.Select(item => JsonSerializer.Deserialize<T>(item.Payload, JsonOptions)!)
+        "scenario" => ReplaceAsync(database.Scenarios, values, keySelector, () => new ScenarioRecord(), cancellationToken),
+        "scenario-versions" => ReplaceAsync(database.ScenarioVersions, values, keySelector, () => new ScenarioVersionRecord(), cancellationToken),
+        "scenario-artifact" => ReplaceAsync(database.ScenarioArtifacts, values, keySelector, () => new ScenarioArtifactRecord(), cancellationToken),
+        "campaign" => ReplaceAsync(database.Campaigns, values, keySelector, () => new CampaignRecord(), cancellationToken),
+        "campaign-ranking" => ReplaceAsync(database.CampaignRankings, values, keySelector, () => new CampaignRankingRecord(), cancellationToken),
+        "run" => ReplaceAsync(database.ScenarioRuns, values, keySelector, () => new ScenarioRunRecord(), cancellationToken),
+        "run-artifact" => ReplaceAsync(database.RunArtifacts, values, keySelector, () => new RunArtifactRecord(), cancellationToken),
+        "failure" => ReplaceAsync(database.FailureClusters, values, keySelector, () => new FailureClusterRecord(), cancellationToken),
+        "analytics" => ReplaceAsync(database.AnalyticsConfigs, values, keySelector, () => new AnalyticsConfigRecord(), cancellationToken),
+        "audit" => ReplaceAsync(database.AuditLogs, values, keySelector, () => new AuditLogRecord(), cancellationToken),
+        "integration" => ReplaceAsync(database.CarlaIntegrations, values, keySelector, () => new CarlaIntegrationRecord(), cancellationToken),
+        "worker" => ReplaceAsync(database.SimulationNodes, values, keySelector, () => new SimulationNodeRecord(), cancellationToken),
+        "oracle-rule" => ReplaceAsync(database.OracleRules, values, keySelector, () => new OracleRuleRecord(), cancellationToken),
+        "oracle-profile" => ReplaceAsync(database.OracleProfiles, values, keySelector, () => new OracleProfileRecord(), cancellationToken),
+        _ => throw UnknownArea(area)
+    };
+
+    private static async Task<T?> GetAsync<TRecord, T>(DbSet<TRecord> table, string key, CancellationToken cancellationToken)
+        where TRecord : WorkflowRecord
+    {
+        var record = await table.AsNoTracking().SingleOrDefaultAsync(item => item.Key == key, cancellationToken);
+        return record is null ? default : JsonSerializer.Deserialize<T>(record.Payload, JsonOptions);
+    }
+
+    private static async Task<List<T>> ListAsync<TRecord, T>(DbSet<TRecord> table, CancellationToken cancellationToken)
+        where TRecord : WorkflowRecord
+    {
+        var records = await table.AsNoTracking().OrderByDescending(item => item.UpdatedAt).ToListAsync(cancellationToken);
+        return records.Select(item => JsonSerializer.Deserialize<T>(item.Payload, JsonOptions)!)
             .Where(item => item is not null)
             .ToList();
     }
 
-    public async Task SaveAsync<T>(string area, string key, T value, CancellationToken cancellationToken)
+    private async Task SaveAsync<TRecord>(DbSet<TRecord> table, string key, string payload, Func<TRecord> factory, CancellationToken cancellationToken)
+        where TRecord : WorkflowRecord
     {
-        var document = await database.WorkflowDocuments
-            .SingleOrDefaultAsync(item => item.Area == area && item.Key == key, cancellationToken);
-        var payload = JsonSerializer.Serialize(value, JsonOptions);
-        if (document is null)
+        var record = await table.SingleOrDefaultAsync(item => item.Key == key, cancellationToken);
+        if (record is null)
         {
-            database.WorkflowDocuments.Add(new WorkflowDocument
-            {
-                Area = area,
-                Key = key,
-                Payload = payload,
-                UpdatedAt = DateTimeOffset.UtcNow
-            });
+            record = factory();
+            record.Key = key;
+            table.Add(record);
         }
-        else
-        {
-            document.Payload = payload;
-            document.UpdatedAt = DateTimeOffset.UtcNow;
-        }
+        record.Payload = payload;
+        record.UpdatedAt = DateTimeOffset.UtcNow;
         await database.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task ReplaceAsync<T>(string area, IEnumerable<T> values, Func<T, string> keySelector, CancellationToken cancellationToken)
+    private async Task ReplaceAsync<TRecord, TValue>(DbSet<TRecord> table, IEnumerable<TValue> values, Func<TValue, string> keySelector, Func<TRecord> factory, CancellationToken cancellationToken)
+        where TRecord : WorkflowRecord
     {
         await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
-        var existing = await database.WorkflowDocuments.Where(item => item.Area == area).ToListAsync(cancellationToken);
-        database.WorkflowDocuments.RemoveRange(existing);
+        table.RemoveRange(await table.ToListAsync(cancellationToken));
         var updatedAt = DateTimeOffset.UtcNow;
-        database.WorkflowDocuments.AddRange(values.Select(value => new WorkflowDocument
+        foreach (var value in values)
         {
-            Area = area,
-            Key = keySelector(value),
-            Payload = JsonSerializer.Serialize(value, JsonOptions),
-            UpdatedAt = updatedAt
-        }));
+            var record = factory();
+            record.Key = keySelector(value);
+            record.Payload = JsonSerializer.Serialize(value, JsonOptions);
+            record.UpdatedAt = updatedAt;
+            table.Add(record);
+        }
         await database.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
+
+    private static ArgumentOutOfRangeException UnknownArea(string area) =>
+        new(nameof(area), area, "Unknown workflow persistence area.");
 }

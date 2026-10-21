@@ -106,6 +106,7 @@ public sealed record WorkerNodeResponse(
     string LastHeartbeat);
 
 public sealed record OracleRuleResponse(string Id, string Name, string Description, bool Enabled, double Threshold, string Unit);
+public sealed record OracleProfileResponse(int Version, bool Active, bool Validated, string UpdatedAt);
 
 public sealed record ScenarioRunResponse(
     string Id,

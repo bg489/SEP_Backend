@@ -1,6 +1,6 @@
 # AutoScenarioX .NET API
 
-ASP.NET Core 10 REST API for authentication, role authorization, and the five AutoScenarioX workflows. It uses PostgreSQL 18 database `autoscenariox`. Identity data is stored in schema `app_auth`; workflow JSONB records are stored in `app_workflow` and separated by resource area (scenarios, immutable scenario versions, campaigns, runs, failures, nodes, oracle rules, analytics settings, rankings, CARLA settings, and audit events).
+ASP.NET Core 10 REST API for authentication, role authorization, and the five AutoScenarioX workflows. It uses PostgreSQL 18 database `autoscenariox`. Identity data is stored in schema `app_auth`; workflow records are stored in separate PostgreSQL tables in schema `app_workflow` for scenarios, versions and source artifacts, campaigns and rankings, runs and run artifacts, failure clusters, simulation nodes, CARLA settings, oracle rules and profile state, analytics settings, and audit events. Each workflow row currently keeps its API payload as JSONB so the existing frontend contract can evolve without losing persisted data.
 
 ## Local setup (English)
 
@@ -80,6 +80,7 @@ Login and registration return a 20-minute JWT. Login, registration, and password
 | `POST` | `/api/analytics/failure-clusters/{id}/confirm` | Reviewer confirmation or correction |
 | `GET`, `PUT` | `/api/simulation-nodes` | List nodes; Administrator registers or updates nodes |
 | `GET`, `PUT` | `/api/oracles/rules` | Read or configure oracle thresholds |
+| `GET`, `PUT` | `/api/oracles/profile` | Read or update validated oracle profile state |
 | `GET`, `PUT`, `POST` | `/api/integration/carla`, `/api/integration/carla/test` | Read/save the CARLA profile and check the real executable, Python environment, ScenarioRunner and RPC port; quality is fixed to Low |
 | `GET` | `/api/runs/{id}/artifacts/{fileName}` | Download the saved ScenarioRunner log |
 | `POST` | `/api/worker-callbacks/runs/{id}` | Accept authenticated worker state/progress/result callbacks (`X-Worker-Key`) |
@@ -130,7 +131,7 @@ Gửi `POST /api/worker-callbacks/runs/{id}` kèm `X-Worker-Key`; không đưa k
 
 ## Database changes
 
-EF Core migrations create the `app_auth` Identity tables and the `app_workflow.documents` JSONB store in the existing `autoscenariox` database. The store uses resource areas and stable IDs so scenarios, versions, campaigns, runs, failures, settings, and audit entries remain separate and queryable through their REST contracts. The first API launch applies any pending migrations automatically.
+EF Core migrations create the `app_auth` Identity tables and domain tables in `app_workflow`: `scenarios`, `scenario_versions`, `scenario_artifacts`, `campaigns`, `campaign_rankings`, `scenario_runs`, `run_artifacts`, `failure_clusters`, `simulation_nodes`, `carla_integrations`, `oracle_rules`, `oracle_profiles`, `analytics_configs`, and `audit_logs`. Each has a stable string key, a JSONB payload, and an update timestamp. The migration copies existing rows out of the previous `app_workflow.documents` table before removing it, so previously saved workflow data remains available. The first API launch applies pending migrations automatically. Connect in pgAdmin to database `autoscenariox`, then expand `Schemas > app_workflow > Tables` to inspect them.
 
 ## Secrets and deployment
 

@@ -93,12 +93,8 @@ namespace AutoScenarioX.AuthApi.Data.Migrations
                     b.ToTable("users", "app_auth");
                 });
 
-            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.WorkflowDocument", b =>
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.WorkflowRecord", b =>
                 {
-                    b.Property<string>("Area")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)");
-
                     b.Property<string>("Key")
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
@@ -110,11 +106,11 @@ namespace AutoScenarioX.AuthApi.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("Area", "Key");
+                    b.HasKey("Key");
 
-                    b.HasIndex("Area", "UpdatedAt");
+                    b.ToTable((string)null);
 
-                    b.ToTable("documents", "app_workflow");
+                    b.UseTpcMappingStrategy();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
@@ -245,6 +241,132 @@ namespace AutoScenarioX.AuthApi.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("user_tokens", "app_auth");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.AnalyticsConfigRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("analytics_configs", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.AuditLogRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("audit_logs", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.CampaignRankingRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("campaign_rankings", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.CampaignRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("campaigns", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.CarlaIntegrationRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("carla_integrations", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.FailureClusterRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("failure_clusters", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.OracleProfileRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("oracle_profiles", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.OracleRuleRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("oracle_rules", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.RunArtifactRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("run_artifacts", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.ScenarioArtifactRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("scenario_artifacts", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.ScenarioRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("scenarios", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.ScenarioRunRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("scenario_runs", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.ScenarioVersionRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("scenario_versions", "app_workflow");
+                });
+
+            modelBuilder.Entity("AutoScenarioX.AuthApi.Models.SimulationNodeRecord", b =>
+                {
+                    b.HasBaseType("AutoScenarioX.AuthApi.Models.WorkflowRecord");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("simulation_nodes", "app_workflow");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
