@@ -2,6 +2,7 @@ using AutoScenarioX.AuthApi.Auth;
 using AutoScenarioX.AuthApi.Contracts;
 using AutoScenarioX.AuthApi.Data;
 using AutoScenarioX.AuthApi.Services;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -36,6 +37,17 @@ public sealed class ExecutionController(
         if (selected.Any(item => item is null)) return BadRequest(new MessageResponse("One or more requested scenarios do not exist."));
         if (selected.Any(item => item!.Status is not ("Active" or "Approved")))
             return BadRequest(new MessageResponse("Only Active or Approved scenarios can be executed."));
+        var rules = await repository.ListAsync<OracleRuleResponse>("oracle-rule", cancellationToken);
+        if (rules.Count == 0) rules = OracleRuleCatalog.Defaults;
+        if (selected.Any(item => item!.ExecutionMode == "CARLA actors"))
+        {
+            var enabled = rules.Where(rule => rule.Enabled).ToList();
+            var unsupported = enabled.Where(rule => !OracleRuleCatalog.NativeRuleIds.Contains(rule.Id)).Select(rule => rule.Name).ToList();
+            if (enabled.Count == 0 || unsupported.Count > 0)
+                return Conflict(new MessageResponse("CARLA actor scenes support Collision, Speed limit and Vehicle freezing checks. Ask an administrator to enable only these checks in the oracle profile before running an actor scene. Unsupported enabled checks: " + string.Join(", ", unsupported)));
+            if (selected.Any(item => item!.ExecutionMode == "CARLA actors" && (item.ExecutionDurationSeconds ?? 30) >= (campaign.TimeoutSeconds ?? 300)))
+                return BadRequest(new MessageResponse("Campaign timeout must exceed each actor scene's simulation duration to allow setup and cleanup."));
+        }
         var integration = await repository.GetAsync<CarlaIntegrationResponse>("integration", "carla", cancellationToken);
         if (integration is not { Active: true, ConnectionStatus: "Ready" or "Connected" })
             return Conflict(new MessageResponse("Activate a ready CARLA 0.9.16 and ScenarioRunner installation before queueing real runs."));
@@ -45,20 +57,34 @@ public sealed class ExecutionController(
         {
             var artifact = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", $"{scenario!.Id}:{scenario.Version}", cancellationToken);
             if (artifact is null)
-                return Conflict(new MessageResponse($"Scenario '{scenario.Name}' has no saved .xosc/.osc source for version {scenario.Version}. Re-import the source file before executing it."));
+                return Conflict(new MessageResponse($"Scenario '{scenario.Name}' has no saved execution definition for version {scenario.Version}. Save a new version before executing it."));
+            var expectedExtension = scenario.ExecutionMode == "CARLA actors" ? ".json" : null;
+            if (expectedExtension is not null && !artifact.FileName.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase) ||
+                scenario.ExecutionMode == "OpenSCENARIO source" &&
+                !artifact.FileName.EndsWith(".xosc", StringComparison.OrdinalIgnoreCase) &&
+                !artifact.FileName.EndsWith(".osc", StringComparison.OrdinalIgnoreCase))
+                return Conflict(new MessageResponse($"Scenario '{scenario.Name}' has a saved artifact that does not match its execution format. Save the configuration again."));
+            if (!artifact.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+                OpenScenarioSource.Validate(artifact.Content, requireCriteria: true) is { } sourceIssue)
+                return Conflict(new MessageResponse($"Scenario '{scenario.Name}': {sourceIssue}"));
         }
 
         var repetitionCount = Math.Clamp(campaign.Repetitions ?? 1, 1, 100);
-        var createdAt = DateTimeOffset.UtcNow;
         var newRuns = selected.SelectMany(scenario => Enumerable.Range(1, repetitionCount).Select(repetition =>
             new ScenarioRunResponse(
                 NewId("RUN"), campaign.Id, scenario!.Id, scenario.Name, scenario.Version, "Queued", 0, null,
                 null, null, null, request.RetryOf, repetition, campaign.SutVersion ?? "1.0.0",
                 campaign.Agent ?? "Behavior Agent", (campaign.RandomSeed ?? 42) + repetition - 1,
-                campaign.OracleProfile ?? "Default safety profile", [], [])))
+                campaign.OracleProfile ?? "Default safety profile", ["execution-options.json"], [])))
             .ToList();
+        var executionOptions = JsonSerializer.Serialize(new ExecutionOptionsSnapshotResponse(
+            Math.Clamp(campaign.TimeoutSeconds ?? 300, 1, 86400), rules), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         foreach (var run in newRuns)
+        {
+            await repository.SaveAsync("run-artifact", $"{run.Id}:execution-options.json",
+                new RunArtifactResponse(run.Id, "execution-options.json", "application/json", executionOptions, DateTimeOffset.UtcNow.ToString("O")), cancellationToken);
             await repository.SaveAsync("run", run.Id, run, cancellationToken);
+        }
         var updatedCampaign = campaign with { Status = "Queued", Progress = 0, FailedRuns = 0, PassRate = 0 };
         await repository.SaveAsync("campaign", campaign.Id, updatedCampaign, cancellationToken);
         await auditLog.WriteAsync(User, "Queue campaign execution", campaign.Id, "Success", cancellationToken);

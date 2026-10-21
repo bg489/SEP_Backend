@@ -1,5 +1,6 @@
 using AutoScenarioX.AuthApi.Contracts;
 using AutoScenarioX.AuthApi.Data;
+using System.Text.Json;
 
 namespace AutoScenarioX.AuthApi.Services;
 
@@ -67,19 +68,61 @@ public sealed class ScenarioExecutionWorker(
             logger.LogInformation("Claimed run {RunId} for scenario {ScenarioId}.", run.Id, run.ScenarioId);
             await callbackWriter.ApplyAsync(run.Id, new WorkerRunCallbackRequest("Assigned", 1, WorkerId: workerId), cancellationToken);
             await callbackWriter.ApplyAsync(run.Id, new WorkerRunCallbackRequest("Running", 5, WorkerId: workerId), cancellationToken);
+            // Execute the saved version, even if the engineer edits the scenario after queueing it.
+            var executionScenario = scenario;
+            if (artifact.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                executionScenario = JsonSerializer.Deserialize<ScenarioResponse>(artifact.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    ?? throw new InvalidOperationException("The saved scenario version is not a valid CARLA actor configuration.");
+                if (executionScenario.Id != run.ScenarioId || executionScenario.Version != run.ScenarioVersion)
+                    throw new InvalidOperationException("The saved scenario configuration does not match the queued version.");
+            }
             var campaign = await repository.GetAsync<CampaignResponse>("campaign", run.CampaignId, cancellationToken);
             var timeout = Math.Clamp(campaign?.TimeoutSeconds ?? 300, 1, 86400);
-            var result = await carlaRuntime.RunScenarioAsync(integration, run.Id, artifact.FileName, artifact.Content, timeout, runCancellation.Token);
-            var error = result.TimedOut ? $"ScenarioRunner exceeded the campaign timeout of {timeout} seconds." :
-                result.ExitCode != 0 ? $"ScenarioRunner exited with code {result.ExitCode?.ToString() ?? "unknown"}." : null;
-            var state = result.TimedOut ? "Timed Out" : result.ExitCode == 0 ? "Passed" : "Failed";
-            var verdict = result.TimedOut ? "TIMEOUT" : result.ExitCode == 0 ? "PASS" : "FAIL";
-            var evidence = error is null ? [] : new List<FailureEvidenceResponse>
+            var oracleRules = await repository.ListAsync<OracleRuleResponse>("oracle-rule", cancellationToken);
+            if (oracleRules.Count == 0) oracleRules = OracleRuleCatalog.Defaults;
+            var optionsArtifact = await repository.GetAsync<RunArtifactResponse>("run-artifact", $"{run.Id}:execution-options.json", cancellationToken);
+            if (optionsArtifact is not null)
+            {
+                var options = JsonSerializer.Deserialize<ExecutionOptionsSnapshotResponse>(optionsArtifact.Content, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    ?? throw new InvalidOperationException("The saved execution options are invalid.");
+                timeout = options.TimeoutSeconds;
+                oracleRules = options.OracleRules;
+            }
+            var result = artifact.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                ? await carlaRuntime.RunConfiguredScenarioAsync(integration, run.Id, executionScenario, run, oracleRules, timeout, runCancellation.Token)
+                : await carlaRuntime.RunScenarioAsync(integration, run.Id, artifact.FileName, artifact.Content, timeout, runCancellation.Token);
+            runCancellation.Token.ThrowIfCancellationRequested();
+            var error = result.TimedOut
+                ? $"CARLA execution exceeded the campaign timeout of {timeout} seconds."
+                : result.Passed == true
+                    ? null
+                    : result.Error ?? (result.ExitCode != 0
+                        ? $"CARLA execution exited with code {result.ExitCode?.ToString() ?? "unknown"}."
+                        : "CARLA execution did not report a successful scenario outcome; it was not marked PASS.");
+            var state = result.TimedOut ? "Timed Out" : result.Passed == true ? "Passed" : "Failed";
+            var verdict = result.TimedOut ? "TIMEOUT" : result.Passed == true ? "PASS" : "FAIL";
+            var evidence = result.Evidence ?? (error is null ? [] : new List<FailureEvidenceResponse>
             {
                 new(DateTimeOffset.UtcNow.ToString("O"), "ScenarioRunner execution", "Process result", "PASS", error)
-            };
+            });
+            if (result.ResultJson is not null)
+            {
+                await repository.SaveAsync("run-artifact", $"{run.Id}:simulation-result.json",
+                    new RunArtifactResponse(run.Id, "simulation-result.json", "application/json", result.ResultJson, DateTimeOffset.UtcNow.ToString("O")), cancellationToken);
+                var latest = await repository.GetAsync<ScenarioRunResponse>("run", run.Id, cancellationToken);
+                if (latest is not null && latest.State != "Cancelled")
+                    await repository.SaveAsync("run", run.Id, latest with { Artifacts = [.. latest.Artifacts, "simulation-result.json"] }, cancellationToken);
+            }
+            runCancellation.Token.ThrowIfCancellationRequested();
+            var beforeCompletion = await repository.GetAsync<ScenarioRunResponse>("run", run.Id, runCancellation.Token);
+            if (beforeCompletion is null || IsTerminal(beforeCompletion.State))
+            {
+                logger.LogInformation("Skipped completion callback for run {RunId}; its current state is {State}.", run.Id, beforeCompletion?.State ?? "missing");
+                return;
+            }
             await callbackWriter.ApplyAsync(run.Id, new WorkerRunCallbackRequest(
-                state, 100, verdict, workerId, LimitLog(result.Log), error, evidence, result.DurationSeconds), cancellationToken);
+                state, 100, verdict, workerId, LimitLog(result.Log), error, evidence, result.DurationSeconds), runCancellation.Token);
             logger.LogInformation("Run {RunId} finished as {State} ({Verdict}).", run.Id, state, verdict);
         }
         catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
@@ -89,6 +132,12 @@ public sealed class ScenarioExecutionWorker(
         }
         catch (Exception exception)
         {
+            var latest = await repository.GetAsync<ScenarioRunResponse>("run", run.Id, CancellationToken.None);
+            if (runCancellation.IsCancellationRequested || latest is null || IsTerminal(latest.State))
+            {
+                logger.LogInformation("Skipped error callback for run {RunId}; it was cancelled or is already {State}.", run.Id, latest?.State ?? "missing");
+                return;
+            }
             logger.LogError(exception, "Run {RunId} could not be executed.", run.Id);
             await callbackWriter.ApplyAsync(run.Id, new WorkerRunCallbackRequest(
                 "Failed", 100, "FAIL", workerId, Error: exception.Message, Log: exception.ToString()), CancellationToken.None);
@@ -98,6 +147,8 @@ public sealed class ScenarioExecutionWorker(
             _activeRuns.TryRemove(run.Id, out _);
         }
     }
+
+    private static bool IsTerminal(string state) => state is "Passed" or "Failed" or "Timed Out" or "Cancelled";
 
     private static string LimitLog(string log)
     {
