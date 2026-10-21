@@ -129,6 +129,18 @@ Trong giao diện Administrator, nhập `C:\Users\admin\Downloads\CARLA_0.9.16\S
 
 Gửi `POST /api/worker-callbacks/runs/{id}` kèm `X-Worker-Key`; không đưa khóa này vào frontend hoặc Git.
 
+## CARLA actor scenes
+
+Scenarios created in the detailed frontend form use `CARLA actors` mode. The API saves each version's complete configuration as a JSON artifact in `app_workflow.scenario_artifacts`; edits and clones generate a matching artifact with the correct scenario ID and version. Imported `.xosc`/`.osc` files use `OpenSCENARIO source` mode and retain the original XML.
+
+The local worker runs `scripts/run_configured_scenario.py` for actor scenes. It loads the selected map/weather, spawns the selected ego/traffic vehicle blueprints, pedestrians and static props, drives the selected Autopilot or Behavior Agent on a seeded drivable path, and follows the ego with the spectator camera. The official [CARLA vehicle catalogue](https://carla.readthedocs.io/en/latest/catalogue_vehicles/) contains the 41 models in the frontend selector. Missing blueprints or incomplete actor placement fail the run explicitly.
+
+Native actor scenes currently measure Collision, Speed limit and Vehicle freezing. Before queuing one, an Administrator must enable only these supported checks under **Oracle rules**, then save the profile. Other enabled checks are rejected before execution. The separate `speed` legacy rule measures sustained excess over the road speed limit; `speeding` uses an absolute maximum km/h threshold. Detailed route, trigger and action text records intent; custom trajectories and other safety criteria must be authored in an imported OpenSCENARIO source.
+
+ScenarioRunner runs now require actual `ScenarioObject` actors, an `Init` section and executable `criteria_` conditions. The worker reads its JSON criteria report and measured values before returning PASS. An exit code of zero alone is insufficient. Actor runs return measured telemetry, actor IDs/blueprints, oracle results and evidence in `simulation-result.json`; `scenario-run.log` is also downloadable from run details. Queuing snapshots oracle rules and the campaign timeout in `execution-options.json`.
+
+After updating source code, stop the running backend with **Ctrl+C** and run `dotnet run` again. Existing scenarios created from placeholder XML must be opened, changed to **CARLA actor scene**, saved and validated again before execution. No database migration is needed for these extra fields because workflow payloads use JSONB.
+
 ## Database changes
 
 EF Core migrations create the `app_auth` Identity tables and domain tables in `app_workflow`: `scenarios`, `scenario_versions`, `scenario_artifacts`, `campaigns`, `campaign_rankings`, `scenario_runs`, `run_artifacts`, `failure_clusters`, `simulation_nodes`, `carla_integrations`, `oracle_rules`, `oracle_profiles`, `analytics_configs`, and `audit_logs`. Each has a stable string key, a JSONB payload, and an update timestamp. The migration copies existing rows out of the previous `app_workflow.documents` table before removing it, so previously saved workflow data remains available. The first API launch applies pending migrations automatically. Connect in pgAdmin to database `autoscenariox`, then expand `Schemas > app_workflow > Tables` to inspect them.
