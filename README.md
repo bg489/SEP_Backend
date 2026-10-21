@@ -64,7 +64,7 @@ Login and registration return a 20-minute JWT. Login, registration, and password
 | `GET`, `PUT` | `/api/admin/users`, `/api/admin/users/{id}/role` | Administrator user and role management |
 | `GET` | `/api/dashboard/overview` | Counts and recent activity |
 | `GET`, `POST` | `/api/scenarios` | List/filter and create scenarios |
-| `POST` | `/api/scenarios/import` | Persist an imported scenario definition |
+| `POST` | `/api/scenarios/import` | Validate and persist an imported scenario and its original XML artifact |
 | `POST` | `/api/scenarios/{id}/versions` | Save a new immutable scenario version |
 | `POST` | `/api/scenarios/{id}/clone` | Clone a scenario into a draft |
 | `GET`, `PUT` | `/api/scenarios/{id}/versions`, `/api/scenarios/{id}/status` | Version history and review state |
@@ -75,17 +75,58 @@ Login and registration return a 20-minute JWT. Login, registration, and password
 | `POST` | `/api/campaigns/{id}/runs` | Validate and queue campaign runs |
 | `GET` | `/api/runs` | Read persisted run records |
 | `POST` | `/api/campaigns/{id}/runs/cancel` | Cancel queued or active runs |
+| `GET` | `/api/runs/{id}/artifacts/{fileName}` | Download a saved ScenarioRunner log |
 | `GET`, `POST` | `/api/analytics/failure-clusters` | List or record failure clusters with oracle evidence |
 | `POST` | `/api/analytics/failure-clusters/{id}/confirm` | Reviewer confirmation or correction |
 | `GET`, `PUT` | `/api/simulation-nodes` | List nodes; Administrator registers or updates nodes |
 | `GET`, `PUT` | `/api/oracles/rules` | Read or configure oracle thresholds |
-| `GET`, `PUT` | `/api/integration/carla` | Read or save the CARLA profile; quality is fixed to Low |
+| `GET`, `PUT`, `POST` | `/api/integration/carla`, `/api/integration/carla/test` | Read/save the CARLA profile and check the real executable, Python environment, ScenarioRunner and RPC port; quality is fixed to Low |
+| `GET` | `/api/runs/{id}/artifacts/{fileName}` | Download the saved ScenarioRunner log |
+| `POST` | `/api/worker-callbacks/runs/{id}` | Accept authenticated worker state/progress/result callbacks (`X-Worker-Key`) |
 | `GET`, `PUT` | `/api/analytics/preferences` | Read or save analytics settings |
 | `GET` | `/api/audit-log` | Administrator reads immutable server-generated audit events |
 
-## Current execution boundary
+## Real CARLA/ScenarioRunner execution
 
-Campaign creation, scenario versioning/review, ranking and APFD/APFDc evaluation, failure evidence/review, configuration, reporting data, and audit events persist through the API. Starting a campaign creates durable `Queued` run records. Actual CARLA/ScenarioRunner execution and worker callbacks are not implemented in this API yet. The CARLA health check remains an explicitly labeled mock and never starts a simulator process; the only accepted quality setting is `Low`.
+The API hosts a local background worker. It claims persisted campaign runs, loads the exact `.xosc`/`.osc` artifact saved with the scenario version, starts the CARLA server if its RPC port is offline, invokes ScenarioRunner, and records `Assigned`, `Running`, `Passed`, `Failed`, or `Timed Out` callbacks plus the `scenario-run.log` artifact. The UI polls PostgreSQL-backed run state while a campaign is active. CARLA is always launched with `-quality-level=Low`, windowed at 800×600, and without sound.
+
+Install the official ScenarioRunner `v0.9.16` source and its Python 3.12 environment against the matching CARLA wheel:
+
+```powershell
+.\scripts\Install-ScenarioRunner.ps1
+```
+
+This places ScenarioRunner at `C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner`. The CARLA root defaults to `C:\Users\admin\Downloads\CARLA_0.9.16` in Development; override `Carla:RootPath` or `CARLA_ROOT` if it is elsewhere. In the Administrator CARLA settings screen, save that ScenarioRunner path, run **Test installation**, then **Activate worker**. The test runs `scenario_runner.py --version` with the configured Python dependencies; it does not start CARLA. CARLA starts only when an actual run is claimed.
+
+Import a real `.xosc`/`.osc` file in the Scenario Engineer screen. The API validates the XML structure and saves the original source by scenario version; scenario versions and clones retain that artifact. Only an Active/Approved scenario with a saved artifact can be queued. A missing file, wrong Python dependency, absent CARLA install, or failed run is reported in the run state and log instead of being marked as a pass.
+
+Worker callbacks from a separate worker require a secret of at least 32 bytes. It is stored in .NET User Secrets as `Worker:CallbackKey`; create or rotate it with:
+
+```powershell
+.\scripts\Set-WorkerCallbackSecret.ps1
+```
+
+Send callbacks to `POST /api/worker-callbacks/runs/{id}` with the `X-Worker-Key` header and a state/progress/result JSON body. The embedded local worker writes through the same callback handler used to persist state transitions. Keep the callback key out of source control and browser-visible environment variables.
+
+### Chạy CARLA/ScenarioRunner thật (Tiếng Việt)
+
+Backend có worker chạy nền cục bộ: nhận run từ PostgreSQL, tải đúng tệp `.xosc`/`.osc` đã lưu theo phiên bản, mở CARLA nếu cổng RPC chưa chạy, gọi ScenarioRunner và lưu trạng thái/kết quả/log. CARLA luôn khởi chạy với `-quality-level=Low`, cửa sổ 800×600 và tắt âm thanh.
+
+Cài bản ScenarioRunner `v0.9.16` cùng môi trường Python 3.12 và CARLA wheel tương ứng:
+
+```powershell
+.\scripts\Install-ScenarioRunner.ps1
+```
+
+Trong giao diện Administrator, nhập `C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner`, chọn **Save settings**, **Test installation**, rồi **Activate worker**. Kiểm tra bản cài chỉ chạy `scenario_runner.py --version`; CARLA chỉ được khởi động khi worker nhận run thật. Hãy import tệp `.xosc`/`.osc` rồi duyệt kịch bản sang Active/Approved trước khi thêm vào campaign.
+
+Để cho phép worker ngoài backend gửi callback, tạo khóa riêng trong User Secrets:
+
+```powershell
+.\scripts\Set-WorkerCallbackSecret.ps1
+```
+
+Gửi `POST /api/worker-callbacks/runs/{id}` kèm `X-Worker-Key`; không đưa khóa này vào frontend hoặc Git.
 
 ## Database changes
 
