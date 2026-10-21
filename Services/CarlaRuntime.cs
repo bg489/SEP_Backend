@@ -159,12 +159,13 @@ public sealed class CarlaRuntime(IConfiguration configuration, ILogger<CarlaRunt
             startInfo.Environment["CARLA_ROOT"] = CarlaRoot;
             var runnerRoot = argumentList.Count > 0 ? Path.GetDirectoryName(argumentList[0]) ?? workingDirectory : workingDirectory;
             startInfo.Environment["SCENARIO_RUNNER_ROOT"] = runnerRoot;
+            startInfo.Environment.TryGetValue("PYTHONPATH", out var inheritedPythonPath);
             var pythonPaths = new[]
             {
                 Path.Combine(CarlaRoot, "PythonAPI", "carla"),
                 Path.Combine(CarlaRoot, "PythonAPI"),
                 runnerRoot,
-                startInfo.Environment["PYTHONPATH"]
+                inheritedPythonPath
             }.Where(path => !string.IsNullOrWhiteSpace(path));
             startInfo.Environment["PYTHONPATH"] = string.Join(Path.PathSeparator, pythonPaths);
         }
