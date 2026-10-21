@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using AutoScenarioX.AuthApi.Auth;
 using AutoScenarioX.AuthApi.Data;
 using AutoScenarioX.AuthApi.Models;
+using AutoScenarioX.AuthApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -41,6 +42,10 @@ builder.Services.AddProblemDetails();
 builder.Services.AddDbContext<AuthDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<WorkflowDocumentRepository>();
 builder.Services.AddScoped<AuditLogWriter>();
+builder.Services.AddScoped<ScenarioRunCallbackWriter>();
+builder.Services.AddSingleton<CarlaRuntime>();
+builder.Services.AddSingleton<ScenarioExecutionWorker>();
+builder.Services.AddHostedService(services => services.GetRequiredService<ScenarioExecutionWorker>());
 
 builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
