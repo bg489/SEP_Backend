@@ -34,6 +34,9 @@ public sealed record CreateScenarioRequest(
     string Severity,
     string Weather);
 
+public sealed record ScenarioImportRequest(ScenarioResponse Scenario, string SourceFileName, string SourceContent);
+public sealed record ScenarioArtifactResponse(string ScenarioId, string Version, string FileName, string Content, string Sha256);
+
 public sealed record ScenarioVersionResponse(string Version, string SavedAt, string Note, string Hash, string Status);
 public sealed record ScenarioStatusRequest(string Status, string Note = "");
 public sealed record ExecutionMetricsRequest(int RunCount, double PassRate, string LastRun);
@@ -126,6 +129,16 @@ public sealed record ScenarioRunResponse(
     List<FailureEvidenceResponse> Evidence);
 
 public sealed record QueueCampaignRunsRequest(List<string>? ScenarioIds = null, string? RetryOf = null);
+public sealed record WorkerRunCallbackRequest(
+    string State,
+    int Progress,
+    string? Verdict = null,
+    string? WorkerId = null,
+    string? Log = null,
+    string? Error = null,
+    List<FailureEvidenceResponse>? Evidence = null,
+    int? DurationSeconds = null);
+public sealed record RunArtifactResponse(string RunId, string FileName, string ContentType, string Content, string CreatedAt);
 public sealed record OverviewResponse(
     int TotalScenarios,
     int ActiveCampaigns,

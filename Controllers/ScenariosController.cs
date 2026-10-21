@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml;
+using System.Xml.Linq;
 using AutoScenarioX.AuthApi.Auth;
 using AutoScenarioX.AuthApi.Contracts;
 using AutoScenarioX.AuthApi.Data;
@@ -54,9 +56,29 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
 
     [HttpPost("import")]
     [Authorize(Roles = RoleNames.ScenarioEngineer + "," + RoleNames.Administrator)]
-    public async Task<ActionResult<ScenarioResponse>> Import(ScenarioResponse imported, CancellationToken cancellationToken)
+    public async Task<ActionResult<ScenarioResponse>> Import(ScenarioImportRequest request, CancellationToken cancellationToken)
     {
-        var scenario = imported with
+        if (string.IsNullOrWhiteSpace(request.SourceFileName) ||
+            !request.SourceFileName.EndsWith(".xosc", StringComparison.OrdinalIgnoreCase) &&
+            !request.SourceFileName.EndsWith(".osc", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new MessageResponse("Only .xosc and .osc files can be imported."));
+        if (string.IsNullOrWhiteSpace(request.SourceContent) || Encoding.UTF8.GetByteCount(request.SourceContent) > 10 * 1024 * 1024)
+            return BadRequest(new MessageResponse("Scenario files must contain valid XML and be no larger than 10 MB."));
+        try
+        {
+            using var input = new StringReader(request.SourceContent);
+            using var reader = XmlReader.Create(input, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+            var document = XDocument.Load(reader);
+            if (document.Root?.Name.LocalName != "OpenSCENARIO" ||
+                !document.Descendants().Any(element => element.Name.LocalName == "Storyboard"))
+                return BadRequest(new MessageResponse("The file must be OpenSCENARIO XML containing a Storyboard."));
+        }
+        catch (XmlException)
+        {
+            return BadRequest(new MessageResponse("The selected scenario file is not valid XML."));
+        }
+
+        var scenario = request.Scenario with
         {
             Id = NewId("SCN"),
             Status = "Draft",
@@ -64,9 +86,15 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             RunCount = 0,
             PassRate = 0,
             LastRun = "Never",
-            Owner = ActorName()
+            Owner = ActorName(),
+            SourceFileName = Path.GetFileName(request.SourceFileName)
         };
+        var sourceBytes = Encoding.UTF8.GetBytes(request.SourceContent);
+        var artifact = new ScenarioArtifactResponse(
+            scenario.Id, scenario.Version, scenario.SourceFileName!, request.SourceContent,
+            Convert.ToHexString(SHA256.HashData(sourceBytes)).ToLowerInvariant());
         await SaveScenarioAsync(scenario, $"Imported {scenario.SourceFileName ?? "scenario definition"}", cancellationToken);
+        await repository.SaveAsync("scenario-artifact", ArtifactKey(scenario.Id, scenario.Version), artifact, cancellationToken);
         await auditLog.WriteAsync(User, "Import scenario", scenario.Id, "Success", cancellationToken);
         return CreatedAtAction(nameof(List), new { id = scenario.Id }, scenario);
     }
@@ -91,6 +119,9 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             Owner = current.Owner
         };
         await SaveScenarioAsync(next, "Edited scenario definition", cancellationToken);
+        var source = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, current.Version), cancellationToken);
+        if (source is not null)
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(id, next.Version), source with { Version = next.Version }, cancellationToken);
         await auditLog.WriteAsync(User, "Create scenario version", $"{id} {next.Version}", "Success", cancellationToken);
         return Ok(next);
     }
@@ -114,6 +145,9 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
             Tags = [.. original.Tags, "clone"]
         };
         await SaveScenarioAsync(copy, $"Cloned from {id}", cancellationToken);
+        var source = await repository.GetAsync<ScenarioArtifactResponse>("scenario-artifact", ArtifactKey(id, original.Version), cancellationToken);
+        if (source is not null)
+            await repository.SaveAsync("scenario-artifact", ArtifactKey(copy.Id, copy.Version), source with { ScenarioId = copy.Id }, cancellationToken);
         await auditLog.WriteAsync(User, "Clone scenario", $"{id} → {copy.Id}", "Success", cancellationToken);
         return CreatedAtAction(nameof(List), new { id = copy.Id }, copy);
     }
@@ -182,6 +216,7 @@ public sealed class ScenariosController(WorkflowDocumentRepository repository, A
 
     private string ActorName() => User.Identity?.Name ?? User.FindFirst("name")?.Value ?? "AutoScenarioX user";
     private static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid():N}"[..(prefix.Length + 9)];
+    private static string ArtifactKey(string id, string version) => $"{id}:{version}";
     private static int PriorityFor(string severity) => severity switch { "Critical" => 92, "High" => 80, "Medium" => 62, _ => 45 };
     private static string NextVersion(string current)
     {
