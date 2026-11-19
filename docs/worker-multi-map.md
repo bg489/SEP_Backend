@@ -72,6 +72,14 @@ When a run finishes, its original telemetry is submitted to the backend Oracle.
 The frontend displays the backend result. Supporting a map does not imply that
 every event type or SUT option in the scenario schema has been implemented by
 the recorder. Check actual telemetry and terminal errors when testing behavior.
+The recorder supports the five v1 event types and five trigger types, and only
+BehaviorAgent/Autopilot Ego controllers. Unsupported synchronized arrival
+(`sync`) and lead-vehicle `time_gap_s` controls fail explicitly. Actor/event IDs,
+actor types, missing dependencies and cyclic `after_event` chains are checked
+before a simulator client is created. A successfully applied event fires once;
+dependent delays use that action's actual start time. TTC requires finite
+observed positions and velocities and uses the schema's radial closing-speed
+definition. An untriggered required action cannot produce a completed scenario.
 
 ## Map switching and verification
 

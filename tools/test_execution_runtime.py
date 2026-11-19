@@ -79,6 +79,33 @@ class RuntimeTests(unittest.TestCase):
             recorder.trigger_fired({"type": "time_to_collision", "actor_ref": "lead", "ttc_s": 2},
                 0, (0, 0, 0), {"lead": (10, 0, 0)}, None)
 
+    def test_ttc_missing_or_nonfinite_measurement_is_never_a_trigger(self):
+        trigger = {"type": "time_to_collision", "actor_ref": "lead", "ttc_s": 2}
+        with self.assertRaisesRegex(ValueError, "measured"):
+            recorder.trigger_fired(trigger, 0, (0, 0, 0), {"lead": (0, 0, 0)}, None)
+        for value in (float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "finite"):
+                recorder.trigger_fired(trigger, 0, (0, 0, 0), {"lead": (10, 0, 0)}, None,
+                    ego_velocity=(value, 0, 0), velocities={"lead": (0, 0, 0)})
+
+    def test_pending_event_fires_once_and_after_event_uses_actual_start_time(self):
+        first = ({"id": "first", "trigger": {"type": "simulation_time", "time_s": 1}}, None, 0)
+        second = ({"id": "second", "trigger": {"type": "after_event", "event_ref": "first", "delay_s": 2}}, None, 1)
+        pending, times, dispatch = [first, second], {}, Mock()
+        for time in (0, 1, 1, 2.9, 3, 4):
+            recorder.fire_due_events(pending, times, time, (0, 0, 0), {}, (0, 0, 0), {}, dispatch)
+        self.assertEqual([call.args[0][0]["id"] for call in dispatch.call_args_list], ["first", "second"])
+        self.assertEqual(times, {"first": 1, "second": 3})
+        self.assertEqual(pending, [])
+
+    def test_failed_action_is_not_marked_fired_or_used_as_dependency(self):
+        event = ({"id": "broken", "trigger": {"type": "simulation_time", "time_s": 0}}, None, 0)
+        pending, times = [event], {}
+        with self.assertRaisesRegex(RuntimeError, "actor unavailable"):
+            recorder.fire_due_events(pending, times, 1, (0, 0, 0), {}, (0, 0, 0), {}, Mock(side_effect=RuntimeError("actor unavailable")))
+        self.assertEqual(pending, [event])
+        self.assertEqual(times, {})
+
     def test_unknown_event_or_trigger_is_rejected_before_simulator_start(self):
         for event_type, trigger_type in [("unimplemented", "simulation_time"), ("pedestrian_crossing", "unknown")]:
             with self.subTest(event_type=event_type, trigger_type=trigger_type), self.assertRaises(ValueError):
@@ -96,6 +123,32 @@ class RuntimeTests(unittest.TestCase):
                  "params": {"sync": {"point": {"x": 1, "y": 2}}}}
         with self.assertRaisesRegex(ValueError, "synchronized arrival"):
             recorder.validate_execution_contract({"events": [event]})
+
+    def test_unimplemented_time_gap_is_rejected_instead_of_ignored(self):
+        event = {"id": "brake", "type": "lead_vehicle_brake", "trigger": {"type": "simulation_time"},
+                 "params": {"deceleration_ms2": 4, "time_gap_s": 1}}
+        with self.assertRaisesRegex(ValueError, "time_gap_s"):
+            recorder.validate_execution_contract({"events": [event]})
+
+    def test_unknown_wrong_type_or_duplicate_actor_references_are_rejected(self):
+        event = {"id": "cross", "type": "pedestrian_crossing", "actor_ref": "ped", "params": {},
+                 "trigger": {"type": "simulation_time", "time_s": 1}}
+        for actors in ([], [{"id": "ped", "type": "vehicle"}], [{"id": "ped", "type": "pedestrian"}] * 2):
+            with self.subTest(actors=actors), self.assertRaisesRegex(ValueError, "actor|IDs"):
+                recorder.validate_execution_contract({"actors": actors, "events": [event]})
+        event["trigger"] = {"type": "time_to_collision", "actor_ref": "unknown", "ttc_s": 1}
+        with self.assertRaisesRegex(ValueError, "trigger actor_ref"):
+            recorder.validate_execution_contract({"actors": [{"id": "ped", "type": "pedestrian"}], "events": [event]})
+
+    def test_after_event_rejects_missing_reference_duplicate_ids_and_cycles(self):
+        def event(event_id, previous):
+            return {"id": event_id, "type": "traffic_light_override", "params": {},
+                    "trigger": {"type": "after_event", "event_ref": previous, "delay_s": 0}}
+        for events in ([event("first", "missing")], [event("first", "first")],
+                       [event("first", "second"), event("second", "first")],
+                       [event("same", "same"), event("same", "same")]):
+            with self.subTest(events=events), self.assertRaises(ValueError):
+                recorder.validate_execution_contract({"events": events})
 
     def test_pedestrian_crossing_obeys_direction_and_speed(self):
         recorder._fire(self.carla, {"type": "pedestrian_crossing", "params": {"speed_ms": 1.5, "direction": "right_to_left"}},

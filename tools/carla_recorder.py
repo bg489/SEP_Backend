@@ -8,7 +8,7 @@ Hợp đồng: docs/telemetry-format.md (mục 4: cách dùng). Dừng sớm khi
 
 Cài đặt (Windows cmd, Python 3.12, bản 0.9.16 chưa có wheel cho Python mới hơn):
     py -3.12 -m venv .venv && .venv\\Scripts\\activate
-    set CARLA_ROOT=D:\\CARLA_0.9.16      # wheel không có gói agents; lấy từ PythonAPI/carla của bản tải về
+    set CARLA_ROOT=<CARLA installation directory>
     pip install carla==0.9.16
     pip install -r %CARLA_ROOT%\\PythonAPI\\carla\\requirements.txt
     %CARLA_ROOT%\\CarlaUE4.exe -quality-level=Low -windowed -ResX=1280 -ResY=720
@@ -18,7 +18,7 @@ Chạy:
     python tools/carla_recorder.py package.json --profile normal
 
 Đã hiện thực: route (start, waypoints, goal), weather, ego, traffic nền (TM có seed), actors,
-event pedestrian_crossing và lead_vehicle_brake, cả 3 trigger, va chạm, vượt đèn đỏ (đầu xe cắt vạch dừng).
+va chạm, vượt đèn đỏ (đầu xe cắt vạch dừng).
 Supports all five schema event types, all five triggers, and campaign-selected BehaviorAgent/Autopilot.
 Unsupported or untriggered scenario actions fail explicitly instead of being silently skipped.
 Runner của Flow 2 có thể gọi record(pkg, profile, ..., run_id=<simulation run id>, seed=...) rồi nộp file qua
@@ -65,12 +65,14 @@ def trigger_fired(trigger, t, ego, actors, where, event_times=None, ego_velocity
     if kind == "time_to_collision":
         ref = trigger["actor_ref"]
         target = actors[ref]
+        if ego_velocity is None or ref not in (velocities or {}):
+            raise ValueError("TTC trigger requires measured ego and actor velocities")
+        if not all(math.isfinite(value) for vector in (ego, target, ego_velocity, velocities[ref]) for value in vector):
+            raise ValueError("TTC trigger requires finite measured positions and velocities")
         delta = tuple(target[i] - ego[i] for i in range(3))
         distance = math.sqrt(sum(value * value for value in delta))
         if distance <= 1e-6:
             return True
-        if ego_velocity is None or ref not in (velocities or {}):
-            raise ValueError("TTC trigger requires measured ego and actor velocities")
         relative = tuple(ego_velocity[i] - velocities[ref][i] for i in range(3))
         closing = sum(relative[i] * delta[i] for i in range(3)) / distance
         return closing > 0 and distance / closing <= trigger["ttc_s"]
@@ -482,12 +484,56 @@ def _fire(carla, event, actor, ego_tf, tm_port, braking, *, tm=None, world=None,
 def validate_execution_contract(content, sut_type="behavior_agent"):
     if sut_type not in ("behavior_agent", "autopilot"):
         raise ValueError(f"Unsupported Ego controller: {sut_type}")
-    for event in content.get("events", []):
+    events = content.get("events", [])
+    actor_types = {}
+    for actor in content.get("actors", []):
+        actor_id = actor.get("id")
+        if not isinstance(actor_id, str) or not actor_id or actor_id in actor_types:
+            raise ValueError("Scenario actors require unique non-empty IDs")
+        actor_types[actor_id] = actor.get("type")
+    event_ids = set()
+    dependencies = {}
+    for event in events:
         if event["type"] not in SUPPORTED_EVENTS or event["trigger"]["type"] not in SUPPORTED_TRIGGERS:
             raise ValueError(f"Unsupported event/trigger: {event['id']}")
         # SynchronizeAction needs continuously adjusted arrival times. Reject instead of ignoring it.
         if event.get("params", {}).get("sync"):
             raise ValueError(f"Event {event['id']}: synchronized arrival parameters are not supported by this runner")
+        if "time_gap_s" in event.get("params", {}):
+            raise ValueError(f"Event {event['id']}: time_gap_s control is not supported by this runner")
+        event_id = event.get("id")
+        if not isinstance(event_id, str) or not event_id or event_id in event_ids:
+            raise ValueError("Scenario events require unique non-empty IDs")
+        event_ids.add(event_id)
+        if event["type"] != "traffic_light_override":
+            expected = "pedestrian" if event["type"] == "pedestrian_crossing" else "vehicle"
+            if actor_types.get(event.get("actor_ref")) != expected:
+                raise ValueError(f"Event {event_id}: actor_ref must identify an existing {expected}")
+        trigger = event["trigger"]
+        if trigger["type"] in ("ego_distance_to_actor", "time_to_collision") and trigger.get("actor_ref") not in actor_types:
+            raise ValueError(f"Event {event_id}: trigger actor_ref does not exist")
+        if trigger["type"] == "after_event":
+            dependencies[event_id] = trigger.get("event_ref")
+    for event_id, previous in dependencies.items():
+        if previous not in event_ids:
+            raise ValueError(f"Event {event_id}: after_event reference does not exist")
+        visited = {event_id}
+        while previous is not None:
+            if previous in visited:
+                raise ValueError(f"Event {event_id}: after_event references form a cycle")
+            visited.add(previous)
+            previous = dependencies.get(previous)
+
+
+def fire_due_events(pending, event_times, t, ego, actors, ego_velocity, velocities, dispatch):
+    """Fire each action once, recording its start only after it was applied successfully."""
+    due = [item for item in pending if trigger_fired(
+        item[0]["trigger"], t, ego, actors, item[1], event_times, ego_velocity, velocities)]
+    for item in due:
+        dispatch(item)
+        pending.remove(item)
+        event_times[item[0]["id"]] = t
+    return len(due)
 
 
 def _movement_step(carla, item, t, tm_port):
@@ -995,16 +1041,14 @@ def record(pkg, profile, out_dir, host, port, tm_port, run_id=None, seed=None,
                     ego_pos = (tf.location.x, tf.location.y, tf.location.z)
                     positions = {ref: (l.x, l.y, l.z) for ref, l in ((ref, a.get_location()) for ref, a in named.items())}
                     velocities = {ref: tuple(getattr(a.get_velocity(), axis) for axis in ("x", "y", "z")) for ref, a in named.items()}
-                    for item in [p for p in pending if trigger_fired(p[0]["trigger"], t - warmup, ego_pos, positions, p[1], event_times,
-                                                                   (v.x, v.y, v.z), velocities)]:
-                        pending.remove(item)
-                        event_times[item[0]["id"]] = t - warmup
+                    def dispatch_event(item):
                         _fire(carla, item[0], named.get(item[0].get("actor_ref")), tf, tm_port, braking,
                               tm=tm, world=world, locations=locs, event_index=item[2], movements=movements,
                               light_overrides=light_overrides, t=t, ego_speed=speed_ms)
                         out.event({"t": t, "post_stop": post_stop, "type": "scenario_action",
                                    "event_id": item[0]["id"], "action": item[0]["type"],
                                    "actor_ref": item[0].get("actor_ref")})
+                    fire_due_events(pending, event_times, t - warmup, ego_pos, positions, (v.x, v.y, v.z), velocities, dispatch_event)
                     for movement in list(movements):
                         if _movement_step(carla, movement, t, tm_port):
                             movements.remove(movement)
