@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Urban Red Light Override",
+    "description": "Đèn của ngã tư phía trước chuyển đỏ khi ego còn cách vạch dừng red_distance_m và giữ red_duration_s. Kích hoạt theo khoảng cách (không theo giờ) nên luôn khớp lúc ego tới gần dù traffic nhanh hay chậm. Gần vạch: thử vượt đèn đỏ; đỏ lâu so với timeout: thử route incomplete. Route Town03 spawn 10 → 128 (181 m thẳng) qua 2 ngã tư; vạch dừng ngã tư thứ hai ở (-78.3, -126.66), 150 m sau start, suy từ spawn point (#264/#127 quanh ngã tư), cần kiểm chứng có đèn trên CARLA.",
+    "category": "traffic_light",
+    "tags": ["urban", "traffic-light", "experiment"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town03" },
+  "route": {
+    "start": { "spawn_point_index": 10 },
+    "goal": { "spawn_point_index": 128 },
+    "speed_limit_kmh": 30,
+    "goal_tolerance_m": 5
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": { "blueprint": "vehicle.tesla.model3", "role_name": "hero" },
+  "traffic": {
+    "npc_vehicles": { "count": 15 }
+  },
+  "actors": [],
+  "events": [
+    {
+      "id": "ev_red_light",
+      "type": "traffic_light_override",
+      "description": "Đèn ngã tư phía trước chuyển đỏ khi ego tới gần vạch dừng",
+      "trigger": {
+        "type": "ego_distance_to_location",
+        "location": { "x": -78.3, "y": -126.66, "z": 0.35 },
+        "distance_m": { "$param": "red_distance_m" }
+      },
+      "params": {
+        "target": "next_on_route",
+        "state": "red",
+        "duration_s": { "$param": "red_duration_s" }
+      }
+    }
+  ],
+  "parameters": {
+    "red_distance_m": {
+      "type": "number", "value": 20, "min": 5, "max": 80, "step": 5, "unit": "m",
+      "description": "Distance from the ego to the stop line when the light turns red (at 30 km/h the ego needs about 10 m to stop)."
+    },
+    "red_duration_s": {
+      "type": "number", "value": 30, "min": 5, "max": 90, "step": 5, "unit": "s",
+      "description": "How long the light stays red."
+    }
+  },
+  "execution": { "seed": 51, "timeout_s": 75 }
+}

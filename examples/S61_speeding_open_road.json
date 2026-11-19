@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Open Road Strict Speed Limit",
+    "description": "Đường cao tốc Town04 nhưng giới hạn kiểm thử 60 km/h, thấp hơn biển báo của map. Đường thoáng: thử speeding; giao thông dày: ego bị kìm tốc độ. Spawn 76 → 295 (314 m thẳng), cần kiểm chứng trên CARLA.",
+    "category": "free_driving",
+    "tags": ["highway", "speeding", "experiment"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town04" },
+  "route": {
+    "start": { "spawn_point_index": 76 },
+    "goal": { "spawn_point_index": 295 },
+    "speed_limit_kmh": 60,
+    "goal_tolerance_m": 10
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": { "blueprint": "vehicle.tesla.model3", "role_name": "hero" },
+  "traffic": {
+    "npc_vehicles": { "count": { "$param": "npc_count" } }
+  },
+  "actors": [],
+  "events": [],
+  "parameters": {
+    "npc_count": {
+      "type": "integer", "value": 20, "min": 0, "max": 120, "step": 10,
+      "description": "Background vehicles driven by the Traffic Manager."
+    }
+  },
+  "execution": { "seed": 61, "timeout_s": 60 }
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Highway Slow Vehicle Ahead",
+    "description": "Euro NCAP CCRm 2026 style on the straight Town04 highway lane used by S41/S42: slow_car (spawn #92, ~100 m ahead in the same lane) drives at a constant 20 km/h while the ego starts at and holds ego_speed_kmh. Expected: the ego slows down behind slow_car or changes lanes, without a collision. 100 m gives at least 6 s to collision at 80 km/h, above the 4 s Euro NCAP starts from (NHTSA #24 Lead Vehicle Moving at Lower Constant Speed). Spawn points checked against Town04 map_metadata (75 → 92 same lane and yaw); verify on CARLA.",
+    "category": "following",
+    "tags": ["highway", "following", "template"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town04" },
+  "route": {
+    "start": { "spawn_point_index": 75 },
+    "goal": { "spawn_point_index": 296 },
+    "speed_limit_kmh": 90,
+    "goal_tolerance_m": 10
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": { "$param": "ego_speed_kmh" },
+    "target_speed_kmh": { "$param": "ego_speed_kmh" }
+  },
+  "traffic": {
+    "npc_vehicles": { "count": 0 }
+  },
+  "actors": [
+    {
+      "id": "slow_car",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 92 },
+      "initial_speed_kmh": 20,
+      "behavior": "scripted"
+    }
+  ],
+  "events": [],
+  "parameters": {
+    "ego_speed_kmh": {
+      "type": "number", "value": 50, "min": 30, "max": 80, "step": 10, "unit": "km/h",
+      "description": "Ego test speed: the ego starts at this speed and is held to it while slow_car drives at 20 km/h (Euro NCAP CCRm 2026: 30–80 km/h in 10 km/h steps)."
+    }
+  },
+  "execution": { "seed": 43, "timeout_s": 120 }
+}

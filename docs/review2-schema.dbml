@@ -1,0 +1,393 @@
+// Actual PostgreSQL asx schema after migrations 001-117. Generated 2026-11-03.
+// 24 tables. No fixture records, passwords or keys are included.
+
+Table asx.app_users {
+  id uuid [pk, not null]
+  email text [not null]
+  display_name text [not null]
+  role text [not null]
+  is_active bool [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table asx.audit_logs {
+  id int8 [pk, not null]
+  entity_type text [not null]
+  entity_id uuid [not null]
+  action text [not null]
+  actor_id uuid [not null]
+  details jsonb [not null]
+  created_at timestamptz [not null]
+}
+
+Table asx.campaign_versions {
+  campaign_id uuid [not null]
+  scenario_version_id uuid [not null]
+  sort_order int4 [not null]
+  indexes {
+    (campaign_id, scenario_version_id) [pk]
+  }
+}
+
+Table asx.campaigns {
+  id uuid [pk, not null]
+  seq_no int8 [not null]
+  code text
+  name text [not null]
+  description text
+  strategy text [not null]
+  status text [not null]
+  progress int4 [not null]
+  pass_rate numeric [not null]
+  failed_runs int4 [not null]
+  estimated_duration text [not null]
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  sut_type text [not null]
+  sut_behavior text [not null]
+  sut_carla_version text [not null]
+  started_at timestamptz
+  oracle_config_id uuid [not null]
+  indexes {
+    (seq_no) [unique]
+  }
+}
+
+Table asx.evaluations {
+  id uuid [pk, not null]
+  run_id uuid [not null]
+  oracle_config_id uuid [not null]
+  verdict text [not null]
+  error_reason text
+  evaluated_at timestamptz [not null]
+  indexes {
+    (run_id, oracle_config_id) [unique]
+  }
+}
+
+Table asx.failure_analyses {
+  id uuid [pk, not null]
+  campaign_id uuid [not null]
+  status text [not null]
+  summary text [not null]
+  review_note text
+  effectiveness jsonb
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (campaign_id) [unique]
+  }
+}
+
+Table asx.failure_fault_runs {
+  fault_id uuid [not null]
+  run_id uuid [not null]
+  is_primary bool [not null]
+  indexes {
+    (fault_id, run_id) [pk]
+  }
+}
+
+Table asx.failure_faults {
+  id uuid [pk, not null]
+  analysis_id uuid [not null]
+  root_scenario_id uuid [not null]
+  root_scenario_code text [not null]
+  root_scenario_name text [not null]
+  check_name text [not null]
+  status text [not null]
+  first_run_id uuid [not null]
+  first_t numeric [not null]
+  explanation text
+  report_text text
+}
+
+Table asx.import_records {
+  id uuid [pk, not null]
+  scenario_id uuid
+  format text [not null]
+  original_file_name text [not null]
+  original_hash text [not null]
+  storage_path text
+  status text [not null]
+  import_report jsonb [not null]
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+  original_content text
+}
+
+Table asx.map_metadata {
+  id uuid [pk, not null]
+  map_name text [not null]
+  carla_version text [not null]
+  spawn_points jsonb [not null]
+  spawn_point_count int4
+  preview_image_path text
+  is_active bool [not null]
+  imported_by uuid
+  imported_at timestamptz [not null]
+  indexes {
+    (map_name, carla_version) [unique]
+  }
+}
+
+Table asx.oracle_configs {
+  id uuid [pk, not null]
+  version int4 [not null]
+  name text [not null]
+  description text
+  speeding_tolerance_kmh numeric [not null]
+  speeding_min_duration_s numeric [not null]
+  freezing_max_still_s numeric [not null]
+  ttc_threshold_s numeric [not null]
+  route_goal_tolerance_m numeric [not null]
+  created_by uuid
+  created_at timestamptz [not null]
+  indexes {
+    (version) [unique]
+  }
+}
+
+Table asx.run_telemetry {
+  run_id uuid [pk, not null]
+  telemetry_path text [not null]
+  outcome text
+  duration_s numeric
+  received_at timestamptz [not null]
+  video_path text
+  video_sha256 text
+}
+
+Table asx.scenario_drafts {
+  scenario_id uuid [pk, not null]
+  content jsonb [not null]
+  base_version_id uuid
+  last_validation_report_id uuid
+  row_version int4 [not null]
+  updated_by uuid [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table asx.scenario_tags {
+  scenario_id uuid [not null]
+  tag_id uuid [not null]
+  indexes {
+    (scenario_id, tag_id) [pk]
+  }
+}
+
+Table asx.scenario_versions {
+  id uuid [pk, not null]
+  scenario_id uuid [not null]
+  version_number int4 [not null]
+  schema_version text [not null]
+  content jsonb [not null]
+  content_hash text [not null]
+  map_name text
+  weather_preset text
+  event_types jsonb
+  actor_count int4
+  event_count int4
+  npc_vehicle_count int4
+  pedestrian_count int4
+  speed_limit_kmh numeric
+  ego_blueprint text
+  status text [not null]
+  change_note text
+  source_type text [not null]
+  parent_version_id uuid
+  import_record_id uuid
+  validation_report_id uuid [not null]
+  published_by uuid [not null]
+  published_at timestamptz [not null]
+  deprecated_by uuid
+  deprecated_at timestamptz
+  indexes {
+    (scenario_id, version_number) [unique]
+    (scenario_id, content_hash) [unique]
+  }
+}
+
+Table asx.scenarios {
+  id uuid [pk, not null]
+  seq_no int8 [not null]
+  code text
+  name text [not null]
+  description text
+  category text [not null]
+  status text [not null]
+  origin_type text [not null]
+  origin_version_id uuid
+  variant_batch_id uuid
+  latest_version_id uuid
+  latest_version_number int4 [not null]
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  archived_by uuid
+  archived_at timestamptz
+  indexes {
+    (code) [unique]
+  }
+}
+
+Table asx.similarity_analyses {
+  id uuid [pk, not null]
+  method text [not null]
+  result_json jsonb [not null]
+  created_by uuid
+  created_at timestamptz [not null]
+}
+
+Table asx.simulation_runs {
+  id uuid [pk, not null]
+  campaign_id uuid [not null]
+  scenario_version_id uuid [not null]
+  sort_order int4 [not null]
+  status text [not null]
+  verdict text
+  content_hash text
+  seed int4
+  started_at timestamptz
+  finished_at timestamptz
+  error_message text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  infra_retry_count int4 [not null]
+  attempt int4 [not null]
+  previous_run_id uuid
+  is_current bool [not null]
+  worker_id uuid
+  telemetry_sha256 text
+  progress_json jsonb
+  progress_at timestamptz
+}
+
+Table asx.simulation_workers {
+  id uuid [pk, not null]
+  name text [not null]
+  host text [not null]
+  rpc_port int4 [not null]
+  capacity int4 [not null]
+  enabled bool [not null]
+  quality text [not null]
+  carla_version text [not null]
+  maps_json jsonb [not null]
+  owner_user_id uuid [not null]
+  last_heartbeat_at timestamptz
+  last_error text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (owner_user_id, name) [unique]
+  }
+}
+
+Table asx.system_settings {
+  id int4 [pk, not null]
+  active_oracle_config_id uuid
+  similarity_warning_percent numeric [not null]
+  similarity_block_percent numeric [not null]
+  retention_days int4 [not null]
+  retention_enabled bool [not null]
+  updated_at timestamptz [not null]
+  updated_by uuid
+}
+
+Table asx.tags {
+  id uuid [pk, not null]
+  name text [not null]
+  created_at timestamptz [not null]
+  indexes {
+    (name) [unique]
+  }
+}
+
+Table asx.validation_reports {
+  id uuid [pk, not null]
+  scenario_id uuid [not null]
+  content_hash text [not null]
+  is_valid bool [not null]
+  stopped_at text
+  errors jsonb [not null]
+  warnings jsonb [not null]
+  schema_version text [not null]
+  validator_version text [not null]
+  map_metadata_id uuid
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+}
+
+Table asx.variant_batches {
+  id uuid [pk, not null]
+  base_version_id uuid [not null]
+  parameter_grid jsonb [not null]
+  requested_count int4 [not null]
+  generated_count int4 [not null]
+  note text
+  created_by uuid [not null]
+  created_at timestamptz [not null]
+  strategy text [not null]
+}
+
+Table asx.violations {
+  id uuid [pk, not null]
+  evaluation_id uuid [not null]
+  check_name text [not null]
+  severity text [not null]
+  t numeric [not null]
+  duration_s numeric
+  details jsonb [not null]
+  created_at timestamptz [not null]
+}
+
+Ref: asx.map_metadata.(imported_by) > asx.app_users.(id)
+Ref: asx.variant_batches.(created_by) > asx.app_users.(id)
+Ref: asx.scenarios.(variant_batch_id) > asx.variant_batches.(id)
+Ref: asx.scenarios.(created_by) > asx.app_users.(id)
+Ref: asx.scenarios.(archived_by) > asx.app_users.(id)
+Ref: asx.scenario_versions.(validation_report_id) > asx.validation_reports.(id)
+Ref: asx.scenario_versions.(published_by) > asx.app_users.(id)
+Ref: asx.scenario_versions.(deprecated_by) > asx.app_users.(id)
+Ref: asx.validation_reports.(scenario_id) > asx.scenarios.(id)
+Ref: asx.validation_reports.(map_metadata_id) > asx.map_metadata.(id)
+Ref: asx.validation_reports.(created_by) > asx.app_users.(id)
+Ref: asx.scenario_versions.(scenario_id) > asx.scenarios.(id)
+Ref: asx.scenario_versions.(parent_version_id) > asx.scenario_versions.(id)
+Ref: asx.scenario_drafts.(scenario_id) > asx.scenarios.(id)
+Ref: asx.scenario_drafts.(base_version_id) > asx.scenario_versions.(id)
+Ref: asx.scenario_drafts.(last_validation_report_id) > asx.validation_reports.(id)
+Ref: asx.scenario_drafts.(updated_by) > asx.app_users.(id)
+Ref: asx.scenario_tags.(scenario_id) > asx.scenarios.(id)
+Ref: asx.scenario_tags.(tag_id) > asx.tags.(id)
+Ref: asx.audit_logs.(actor_id) > asx.app_users.(id)
+Ref: asx.scenarios.(latest_version_id) > asx.scenario_versions.(id)
+Ref: asx.import_records.(scenario_id) > asx.scenarios.(id)
+Ref: asx.import_records.(created_by) > asx.app_users.(id)
+Ref: asx.scenarios.(origin_version_id) > asx.scenario_versions.(id)
+Ref: asx.variant_batches.(base_version_id) > asx.scenario_versions.(id)
+Ref: asx.scenario_versions.(import_record_id) > asx.import_records.(id)
+Ref: asx.campaigns.(created_by) > asx.app_users.(id)
+Ref: asx.campaign_versions.(campaign_id) > asx.campaigns.(id)
+Ref: asx.campaign_versions.(scenario_version_id) > asx.scenario_versions.(id)
+Ref: asx.simulation_runs.(campaign_id) > asx.campaigns.(id)
+Ref: asx.simulation_runs.(scenario_version_id) > asx.scenario_versions.(id)
+Ref: asx.violations.(evaluation_id) > asx.evaluations.(id)
+Ref: asx.oracle_configs.(created_by) > asx.app_users.(id)
+Ref: asx.campaigns.(oracle_config_id) > asx.oracle_configs.(id)
+Ref: asx.run_telemetry.(run_id) > asx.simulation_runs.(id)
+Ref: asx.evaluations.(oracle_config_id) > asx.oracle_configs.(id)
+Ref: asx.evaluations.(run_id) > asx.simulation_runs.(id)
+Ref: asx.failure_analyses.(campaign_id) > asx.campaigns.(id)
+Ref: asx.failure_faults.(analysis_id) > asx.failure_analyses.(id)
+Ref: asx.failure_fault_runs.(fault_id) > asx.failure_faults.(id)
+Ref: asx.failure_fault_runs.(run_id) > asx.simulation_runs.(id)
+Ref: asx.simulation_workers.(owner_user_id) > asx.app_users.(id)
+Ref: asx.simulation_runs.(previous_run_id) > asx.simulation_runs.(id)
+Ref: asx.simulation_runs.(worker_id) > asx.simulation_workers.(id)
+Ref: asx.system_settings.(active_oracle_config_id) > asx.oracle_configs.(id)
+Ref: asx.system_settings.(updated_by) > asx.app_users.(id)
+Ref: asx.similarity_analyses.(created_by) > asx.app_users.(id)

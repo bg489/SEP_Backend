@@ -1,0 +1,4 @@
+{"kind":"header","format":"asx.telemetry/1","run_id":"00000000-0000-0000-0000-000000000004","scenario_version_id":"00000000-0000-0000-0000-0000000000a1","content_hash":"sha256:test","carla_version":"0.9.16","sut":{"agent":"autopilot"},"seed":42,"fixed_delta_seconds":0.05,"ego_extent":{"x":2.4,"y":1.0}}
+{"kind":"tick","t":0.00,"post_stop":false,"ego":{"x":0.0,"y":0.0,"z":0.5,"yaw":0.0,"pitch":0.0,"roll":0.0,"vx":4.0,"vy":0.0,"ax":0.0,"ay":0.0,"throttle":0.3,"brake":0.0,"steer":0.0,"speed_limit_kmh":50,"road_id":12,"lane_id":-1},"traffic_light":"none","actors":[]}
+{"kind":"event","t":0.00,"post_stop":false,"type":"collision","other_actor":{"id":0,"type":"static"},"impulse":300.0,"impact_side":"front"}
+{"kind":"tick","t":0.05,"post_st

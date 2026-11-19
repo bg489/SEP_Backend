@@ -1,0 +1,9 @@
+{
+  "namePrefix": "SV5 - Pedestrian crossing rain",
+  "note": "12 tổ hợp: 3 khoảng cách kích hoạt × 2 tốc độ đi bộ × 2 mật độ NPC. Cùng seed 42. Toạ độ phải được kiểm chứng trên CARLA trước khi dùng đánh giá APFD/APFDc.",
+  "parameterGrid": {
+    "trigger_distance_m": [5, 15, 25],
+    "pedestrian_speed_ms": [0.8, 2.0],
+    "npc_count": [0, 40]
+  }
+}

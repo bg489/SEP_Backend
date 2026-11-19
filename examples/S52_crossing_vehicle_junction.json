@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Crossing Car at Junction",
+    "description": "Ego đi thẳng qua nút giao (Town05, spawn 32 → 36). Xe cross_car đứng ở đường cắt ngang bên phải (spawn 188, cách tâm nút ~23 m), khi ego còn cách tâm nút (-195.1, 6.6) dưới 50 m thì chạy thẳng qua nút tới spawn 128, bỏ qua đèn đỏ, chỉnh tốc độ (tối đa crossing_speed_kmh) để tới tâm nút lệch arrival_offset_s giây so với ego (NHTSA #30 Straight Crossing Paths, #4 Running Red Light; Euro NCAP CCCscp; CARLA Leaderboard 04/05). Kỳ vọng: ego nhường hoặc phanh, không va chạm. Đồng bộ thời điểm (sync) nên xung đột xảy ra dù ego chạy nhanh hay chậm. Spawn point đối chiếu map_metadata Town05, cần kiểm chứng trên CARLA.",
+    "category": "intersection",
+    "tags": ["junction", "intersection", "nhtsa"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town05" },
+  "route": {
+    "start": { "spawn_point_index": 32 },
+    "goal": { "spawn_point_index": 36 },
+    "speed_limit_kmh": 60,
+    "goal_tolerance_m": 5
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": { "$param": "ego_speed_kmh" },
+    "target_speed_kmh": { "$param": "ego_speed_kmh" }
+  },
+  "traffic": {
+    "npc_vehicles": { "count": 0 }
+  },
+  "actors": [
+    {
+      "id": "cross_car",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 188 },
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_cross",
+      "type": "vehicle_crossing",
+      "description": "cross_car chạy thẳng qua nút giao, cắt ngang làn của ego",
+      "trigger": {
+        "type": "ego_distance_to_location",
+        "location": { "x": -195.1, "y": 6.6, "z": 0.6 },
+        "distance_m": 50
+      },
+      "actor_ref": "cross_car",
+      "params": {
+        "destination": { "spawn_point_index": 128 },
+        "speed_kmh": { "$param": "crossing_speed_kmh" },
+        "ignore_traffic_lights": true,
+        "sync": {
+          "point": { "x": -195.1, "y": 6.6, "z": 0.6 },
+          "offset_s": { "$param": "arrival_offset_s" }
+        }
+      }
+    }
+  ],
+  "parameters": {
+    "ego_speed_kmh": {
+      "type": "number", "value": 30, "min": 20, "max": 60, "step": 10, "unit": "km/h",
+      "description": "Ego test speed: the ego starts at this speed and is held to it (Euro NCAP CCCscp 2026: 20–80 km/h in 10 km/h steps; 70–80 km/h only against a crossing car at 20–30 km/h)."
+    },
+    "arrival_offset_s": {
+      "type": "number", "value": 0, "min": -2, "max": 2, "step": 0.5, "unit": "s",
+      "description": "How many seconds before (negative) or after the ego the other car reaches the conflict point; 0 = at the same time."
+    },
+    "crossing_speed_kmh": {
+      "type": "number", "value": 30, "min": 15, "max": 60, "step": 5, "unit": "km/h",
+      "description": "Top speed of the crossing car; the runner adjusts its speed to stay in sync but never exceeds this."
+    }
+  },
+  "execution": { "seed": 52, "timeout_s": 60 }
+}

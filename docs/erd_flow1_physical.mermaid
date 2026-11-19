@@ -1,0 +1,109 @@
+erDiagram
+    app_users ||--o{ scenarios : "created_by"
+    scenarios ||--o| scenario_drafts : "có tối đa 1 bản nháp"
+    scenarios ||--o{ scenario_versions : "có nhiều version bất biến"
+    scenarios ||--o{ validation_reports : "được validate nhiều lần"
+    scenarios ||--o{ scenario_tags : ""
+    tags ||--o{ scenario_tags : ""
+    validation_reports ||--o{ scenario_versions : "cho phép publish"
+    scenario_versions ||--o{ scenario_versions : "parent_version (clone/variant)"
+    scenario_versions ||--o{ variant_batches : "base_version"
+    variant_batches ||--o{ scenarios : "sinh ra"
+    import_records ||--o{ scenario_versions : "nguồn import"
+    scenarios ||--o{ import_records : ""
+    map_metadata ||--o{ validation_reports : "dùng cho tầng 3"
+    app_users ||--o{ audit_logs : "actor"
+
+    scenarios {
+        uuid id PK
+        text code UK "SCN-00001 (tự sinh)"
+        text name
+        text category
+        text status "ACTIVE | ARCHIVED"
+        text origin_type "manual|import|clone|variant"
+        uuid origin_version_id FK
+        uuid variant_batch_id FK
+        uuid latest_version_id FK
+        int latest_version_number
+    }
+    scenario_drafts {
+        uuid scenario_id PK "FK"
+        jsonb content "nội dung đang sửa"
+        uuid base_version_id FK
+        uuid last_validation_report_id FK
+        int row_version "optimistic lock"
+    }
+    scenario_versions {
+        uuid id PK "= scenario_version_id cho Flow 2"
+        uuid scenario_id FK
+        int version_number "UK cùng scenario_id"
+        jsonb content "BẤT BIẾN - toàn bộ cấu hình (xem sơ đồ logic)"
+        text content_hash "UK cùng scenario_id"
+        text map_name "generated"
+        text weather_preset "generated"
+        jsonb event_types "generated"
+        int actor_count "generated"
+        int event_count "generated"
+        int npc_vehicle_count "generated"
+        int pedestrian_count "generated"
+        numeric speed_limit_kmh "generated"
+        text ego_blueprint "generated"
+        text status "READY | DEPRECATED"
+        text source_type
+        uuid parent_version_id FK
+        uuid validation_report_id FK
+    }
+    validation_reports {
+        uuid id PK
+        uuid scenario_id FK
+        text content_hash
+        bool is_valid
+        text stopped_at "schema|business|carla"
+        jsonb errors
+        jsonb warnings
+        uuid map_metadata_id FK
+    }
+    map_metadata {
+        uuid id PK
+        text map_name
+        text carla_version
+        jsonb spawn_points
+        int spawn_point_count "generated"
+        bool is_active
+    }
+    import_records {
+        uuid id PK
+        uuid scenario_id FK
+        text format
+        text original_hash
+        text storage_path "Supabase Storage"
+        text status
+        jsonb import_report
+    }
+    variant_batches {
+        uuid id PK
+        uuid base_version_id FK
+        jsonb parameter_grid
+        int generated_count
+    }
+    tags {
+        uuid id PK
+        text name UK
+    }
+    scenario_tags {
+        uuid scenario_id PK
+        uuid tag_id PK
+    }
+    audit_logs {
+        bigint id PK
+        text entity_type
+        uuid entity_id
+        text action
+        uuid actor_id FK
+        jsonb details
+    }
+    app_users {
+        uuid id PK
+        text email
+        text role
+    }

@@ -1,0 +1,95 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+    tags: ['review-2', 'review-2-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: asx_ci_review2
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_disposable_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: ci_disposable_only
+      PGDATABASE: asx_ci_review2
+      ASX_TEST_DATABASE: Host=localhost;Port=5432;Username=postgres;Password=ci_disposable_only;Database=asx_ci_review2
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Apply migrations to disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PGDATABASE" = asx_ci_review2
+          mkdir -p TestResults
+          for migration in database/migrations/*.sql; do
+            case "$(basename "$migration")" in 000_*|900_*) continue ;; esac
+            echo "Applying $(basename "$migration")"
+            psql -v ON_ERROR_STOP=1 -f "$migration" >> TestResults/database-migrations.log
+          done
+          psql -v ON_ERROR_STOP=1 -f database/seeds/review2_demo.sql >> TestResults/database-migrations.log
+      - name: Restore .NET tests
+        run: dotnet restore backend/AutoScenarioX.Api.Tests/AutoScenarioX.Api.Tests.csproj
+      - name: Build
+        run: dotnet build backend/AutoScenarioX.Api.Tests/AutoScenarioX.Api.Tests.csproj --configuration Release --no-restore
+      - name: Unit, HTTP and PostgreSQL integration tests
+        run: dotnet test backend/AutoScenarioX.Api.Tests/AutoScenarioX.Api.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=backend.trx" --results-directory TestResults --collect:"XPlat Code Coverage"
+      - name: Worker offline regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools -p test_campaign_worker.py -v 2>&1 | tee TestResults/worker.log
+          python -m unittest discover -s tools -p test_execution_runtime.py -v 2>&1 | tee TestResults/execution-runtime.log
+      - name: Recorder offline regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/test_carla_recorder.py 2>&1 | tee TestResults/recorder.log
+      - name: Record exact source revision
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p TestResults
+          git rev-parse HEAD > TestResults/commit.txt
+          printf '%s\n' "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" > TestResults/workflow-run.txt
+      - name: Publish test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-evidence-${{ github.sha }}
+          path: TestResults/
+          retention-days: 30
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+{
+  "namePrefix": "SV5 - Highway cut-in brake",
+  "note": "15 tổ hợp trên S31: 5 khoảng chen × 3 mức phanh. Khoảng 4–8 m + phanh 9 m/s2 dự kiến collision/TTC, 20–30 m + 3 m/s2 dự kiến đạt. Cùng seed 7.",
+  "parameterGrid": {
+    "cut_in_gap_m": [4, 8, 12, 20, 30],
+    "brake_decel": [3, 6, 9]
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "T3e_town05_route_timeout",
+    "description": "Goal là spawn point #234, cách start #12 khoảng 280 m theo đường chim bay. Ở giới hạn 20 km/h cần ít nhất 50.3 s nhưng timeout chỉ 45 s, nên chỉ run chạy quá tốc độ mới về đích được (1 lỗi tầng 3).",
+    "category": "pedestrian",
+    "tags": [
+      "pedestrian",
+      "urban",
+      "rain",
+      "vru"
+    ]
+  },
+  "source": {
+    "type": "manual"
+  },
+  "map": {
+    "name": "Town05"
+  },
+  "route": {
+    "start": {
+      "spawn_point_index": 12
+    },
+    "goal": {
+      "spawn_point_index": 234
+    },
+    "speed_limit_kmh": 20,
+    "goal_tolerance_m": 5
+  },
+  "weather": {
+    "preset": "HardRainNoon",
+    "fog_density": 10,
+    "wetness": 80
+  },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero"
+  },
+  "traffic": {
+    "npc_vehicles": {
+      "count": {
+        "$param": "npc_count"
+      }
+    },
+    "pedestrians": {
+      "count": 5,
+      "crossing_probability": 0.1
+    }
+  },
+  "actors": [
+    {
+      "id": "ped_01",
+      "type": "pedestrian",
+      "blueprint": "walker.pedestrian.0001",
+      "spawn": {
+        "x": 20.5,
+        "y": -60.2,
+        "z": 1.0,
+        "yaw": 90
+      },
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_ped_cross",
+      "type": "pedestrian_crossing",
+      "description": "ped_01 băng qua đường khi ego tới gần",
+      "trigger": {
+        "type": "ego_distance_to_actor",
+        "actor_ref": "ped_01",
+        "distance_m": {
+          "$param": "trigger_distance_m"
+        }
+      },
+      "actor_ref": "ped_01",
+      "params": {
+        "speed_ms": {
+          "$param": "pedestrian_speed_ms"
+        },
+        "direction": "left_to_right"
+      }
+    }
+  ],
+  "parameters": {
+    "trigger_distance_m": {
+      "type": "number",
+      "value": 10,
+      "min": 5,
+      "max": 30,
+      "step": 5,
+      "unit": "m",
+      "description": "Khoảng cách ego-pedestrian lúc pedestrian bắt đầu băng qua"
+    },
+    "pedestrian_speed_ms": {
+      "type": "number",
+      "value": 1.4,
+      "min": 0.5,
+      "max": 3,
+      "step": 0.1,
+      "unit": "m/s",
+      "description": "Tốc độ đi bộ khi băng qua đường"
+    },
+    "npc_count": {
+      "type": "integer",
+      "value": 20,
+      "min": 0,
+      "max": 60,
+      "step": 10,
+      "description": "Số xe NPC nền do Traffic Manager điều khiển"
+    }
+  },
+  "execution": {
+    "seed": 42,
+    "timeout_s": 45
+  }
+}

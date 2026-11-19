@@ -1,0 +1,50 @@
+erDiagram
+    app_users ||--o{ simulation_workers : owns
+    app_users ||--o{ similarity_analyses : creates
+    app_users ||--o{ system_settings : updates
+    oracle_configs ||--o{ campaigns : pinned_by
+    oracle_configs ||--o{ system_settings : active_default
+    campaigns ||--o{ simulation_runs : contains
+    scenario_versions ||--o{ simulation_runs : executes
+    simulation_workers ||--o{ simulation_runs : claims
+    simulation_runs o|--o{ simulation_runs : previous_attempt
+    simulation_runs ||--o| run_telemetry : retains
+    simulation_runs ||--o{ evaluations : retains
+    evaluations ||--o{ violations : records
+    system_settings {
+        int id PK
+        uuid active_oracle_config_id FK
+        numeric similarity_warning_percent
+        numeric similarity_block_percent
+        int retention_days
+        boolean retention_enabled
+        uuid updated_by FK
+        timestamptz updated_at
+    }
+    similarity_analyses {
+        uuid id PK
+        text method
+        jsonb result_json
+        uuid created_by FK
+        timestamptz created_at
+    }
+    simulation_workers {
+        uuid id PK
+        uuid owner_user_id FK
+        text name
+        int capacity
+        boolean enabled
+        text quality
+        jsonb maps_json
+        timestamptz last_heartbeat_at
+    }
+    simulation_runs {
+        uuid id PK
+        uuid previous_run_id FK
+        uuid worker_id FK
+        int attempt
+        boolean is_current
+        text telemetry_sha256
+        jsonb progress_json
+        timestamptz progress_at
+    }

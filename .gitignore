@@ -1,9 +1,42 @@
 bin/
 obj/
 .vs/
+.idea/
 *.user
 *.suo
-appsettings.Local.json
-*.db
-*.db-shm
-*.db-wal
+.DS_Store
+appsettings.*.local.json
+
+# Bản ghi Telemetry từ tools/carla_recorder.py (không commit)
+recordings/
+
+# Python venv cho tools/ (validator tham chiếu)
+.venv/
+__pycache__/
+
+# Frontend
+node_modules/
+dist/
+playwright-report/
+test-results/
+.env.local
+.env.*.local
+*.tsbuildinfo
+
+# Ghi chú riêng cho AI agent
+CLAUDE.md
+AGENTS.md
+.agents/
+skills-lock.json
+docs/ROADMAP.md
+
+
+# File đóng gói / tài liệu Word
+*.zip
+docs/*.docx
+
+# Telemetry và video của Run do API lưu
+telemetry-store/
+TestResults/
+coverage/
+recordings/

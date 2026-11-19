@@ -1,0 +1,339 @@
+erDiagram
+    %% Full asx schema after migrations 001-117 (24 tables). Generated from docs/schema-full.dbml.
+
+    app_users ||--o{ audit_logs : actor_id
+    app_users |o--o{ map_metadata : imported_by
+    scenario_versions |o--o{ scenarios : origin_version_id
+    variant_batches |o--o{ scenarios : variant_batch_id
+    scenario_versions |o--o{ scenarios : latest_version_id
+    app_users ||--o{ scenarios : created_by
+    app_users |o--o{ scenarios : archived_by
+    scenarios ||--o| scenario_drafts : scenario_id
+    scenario_versions |o--o{ scenario_drafts : base_version_id
+    validation_reports |o--o{ scenario_drafts : last_validation_report_id
+    app_users ||--o{ scenario_drafts : updated_by
+    scenarios ||--o{ scenario_versions : scenario_id
+    scenario_versions |o--o{ scenario_versions : parent_version_id
+    import_records |o--o{ scenario_versions : import_record_id
+    validation_reports ||--o{ scenario_versions : validation_report_id
+    app_users ||--o{ scenario_versions : published_by
+    app_users |o--o{ scenario_versions : deprecated_by
+    scenarios ||--o{ scenario_tags : scenario_id
+    tags ||--o{ scenario_tags : tag_id
+    scenarios ||--o{ validation_reports : scenario_id
+    map_metadata |o--o{ validation_reports : map_metadata_id
+    app_users ||--o{ validation_reports : created_by
+    scenarios |o--o{ import_records : scenario_id
+    app_users ||--o{ import_records : created_by
+    scenario_versions ||--o{ variant_batches : base_version_id
+    app_users ||--o{ variant_batches : created_by
+    app_users |o--o{ oracle_configs : created_by
+    app_users ||--o{ campaigns : created_by
+    oracle_configs ||--o{ campaigns : oracle_config_id
+    campaigns ||--o{ campaign_versions : campaign_id
+    scenario_versions ||--o{ campaign_versions : scenario_version_id
+    app_users ||--o{ simulation_workers : owner_user_id
+    campaigns ||--o{ simulation_runs : campaign_id
+    scenario_versions ||--o{ simulation_runs : scenario_version_id
+    simulation_runs |o--o{ simulation_runs : previous_run_id
+    simulation_workers |o--o{ simulation_runs : worker_id
+    simulation_runs ||--o| run_telemetry : run_id
+    simulation_runs ||--o{ evaluations : run_id
+    oracle_configs ||--o{ evaluations : oracle_config_id
+    evaluations ||--o{ violations : evaluation_id
+    campaigns ||--o| failure_analyses : campaign_id
+    failure_analyses ||--o{ failure_faults : analysis_id
+    failure_faults ||--o{ failure_fault_runs : fault_id
+    simulation_runs ||--o{ failure_fault_runs : run_id
+    app_users |o--o{ similarity_analyses : created_by
+    oracle_configs |o--o{ system_settings : active_oracle_config_id
+    app_users |o--o{ system_settings : updated_by
+
+    %% ===== nguoi_dung =====
+    app_users {
+        uuid id PK
+        text email UK
+        text display_name
+        text role
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    audit_logs {
+        bigint id PK
+        text entity_type
+        uuid entity_id
+        text action
+        uuid actor_id FK
+        jsonb details
+        timestamptz created_at
+    }
+    %% ===== kich_ban =====
+    map_metadata {
+        uuid id PK
+        text map_name
+        text carla_version
+        jsonb spawn_points
+        integer spawn_point_count
+        text preview_image_path
+        boolean is_active
+        uuid imported_by FK
+        timestamptz imported_at
+    }
+    tags {
+        uuid id PK
+        text name UK
+        timestamptz created_at
+    }
+    scenarios {
+        uuid id PK
+        bigint seq_no
+        text code UK
+        text name
+        text description
+        text category
+        text status
+        text origin_type
+        uuid origin_version_id FK
+        uuid variant_batch_id FK
+        uuid latest_version_id FK
+        integer latest_version_number
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid archived_by FK
+        timestamptz archived_at
+    }
+    scenario_drafts {
+        uuid scenario_id PK, FK
+        jsonb content
+        uuid base_version_id FK
+        uuid last_validation_report_id FK
+        integer row_version
+        uuid updated_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    scenario_versions {
+        uuid id PK
+        uuid scenario_id FK
+        integer version_number
+        text schema_version
+        jsonb content
+        text content_hash
+        text map_name
+        text weather_preset
+        jsonb event_types
+        integer actor_count
+        integer event_count
+        integer npc_vehicle_count
+        integer pedestrian_count
+        numeric speed_limit_kmh
+        text ego_blueprint
+        text status
+        text change_note
+        text source_type
+        uuid parent_version_id FK
+        uuid import_record_id FK
+        uuid validation_report_id FK
+        uuid published_by FK
+        timestamptz published_at
+        uuid deprecated_by FK
+        timestamptz deprecated_at
+    }
+    scenario_tags {
+        uuid scenario_id PK, FK
+        uuid tag_id PK, FK
+    }
+    validation_reports {
+        uuid id PK
+        uuid scenario_id FK
+        text content_hash
+        boolean is_valid
+        text stopped_at
+        jsonb errors
+        jsonb warnings
+        text schema_version
+        text validator_version
+        uuid map_metadata_id FK
+        uuid created_by FK
+        timestamptz created_at
+    }
+    import_records {
+        uuid id PK
+        uuid scenario_id FK
+        text format
+        text original_file_name
+        text original_hash
+        text storage_path
+        text status
+        jsonb import_report
+        uuid created_by FK
+        timestamptz created_at
+        text original_content
+    }
+    variant_batches {
+        uuid id PK
+        uuid base_version_id FK
+        jsonb parameter_grid
+        integer requested_count
+        integer generated_count
+        text note
+        uuid created_by FK
+        timestamptz created_at
+        text strategy
+    }
+    %% ===== campaign =====
+    oracle_configs {
+        uuid id PK
+        integer version UK
+        text name
+        text description
+        numeric speeding_tolerance_kmh
+        numeric speeding_min_duration_s
+        numeric freezing_max_still_s
+        numeric ttc_threshold_s
+        numeric route_goal_tolerance_m
+        uuid created_by FK
+        timestamptz created_at
+    }
+    campaigns {
+        uuid id PK
+        bigint seq_no UK
+        text code
+        text name
+        text description
+        text strategy
+        text status
+        integer progress
+        numeric pass_rate
+        integer failed_runs
+        text estimated_duration
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+        text sut_type
+        text sut_behavior
+        text sut_carla_version
+        timestamptz started_at
+        uuid oracle_config_id FK
+    }
+    campaign_versions {
+        uuid campaign_id PK, FK
+        uuid scenario_version_id PK, FK
+        integer sort_order
+    }
+    simulation_runs {
+        uuid id PK
+        uuid campaign_id FK
+        uuid scenario_version_id FK
+        integer sort_order
+        text status
+        text verdict
+        text content_hash
+        integer seed
+        timestamptz started_at
+        timestamptz finished_at
+        text error_message
+        timestamptz created_at
+        timestamptz updated_at
+        integer infra_retry_count
+        integer attempt
+        uuid previous_run_id FK
+        boolean is_current
+        uuid worker_id FK
+        text telemetry_sha256
+        jsonb progress_json
+        timestamptz progress_at
+    }
+    simulation_workers {
+        uuid id PK
+        text name
+        text host
+        integer rpc_port
+        integer capacity
+        boolean enabled
+        text quality
+        text carla_version
+        jsonb maps_json
+        uuid owner_user_id FK
+        timestamptz last_heartbeat_at
+        text last_error
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    %% ===== oracle =====
+    run_telemetry {
+        uuid run_id PK, FK
+        text telemetry_path
+        text outcome
+        numeric duration_s
+        timestamptz received_at
+        text video_path
+        text video_sha256
+    }
+    evaluations {
+        uuid id PK
+        uuid run_id FK
+        uuid oracle_config_id FK
+        text verdict
+        text error_reason
+        timestamptz evaluated_at
+    }
+    violations {
+        uuid id PK
+        uuid evaluation_id FK
+        text check_name
+        text severity
+        numeric t
+        numeric duration_s
+        jsonb details
+        timestamptz created_at
+    }
+    %% ===== phan_tich =====
+    failure_analyses {
+        uuid id PK
+        uuid campaign_id FK, UK
+        text status
+        text summary
+        text review_note
+        jsonb effectiveness
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    failure_faults {
+        uuid id PK
+        uuid analysis_id FK
+        uuid root_scenario_id
+        text root_scenario_code
+        text root_scenario_name
+        text check_name
+        text status
+        uuid first_run_id
+        numeric first_t
+        text explanation
+        text report_text
+    }
+    failure_fault_runs {
+        uuid fault_id PK, FK
+        uuid run_id PK, FK
+        boolean is_primary
+    }
+    similarity_analyses {
+        uuid id PK
+        text method
+        jsonb result_json
+        uuid created_by FK
+        timestamptz created_at
+    }
+    %% ===== quan_tri =====
+    system_settings {
+        integer id PK
+        uuid active_oracle_config_id FK
+        numeric similarity_warning_percent
+        numeric similarity_block_percent
+        integer retention_days
+        boolean retention_enabled
+        timestamptz updated_at
+        uuid updated_by FK
+    }

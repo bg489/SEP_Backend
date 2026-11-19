@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Highway Stopped Vehicle Ahead",
+    "description": "Xe đứng yên giữa làn của ego, cách điểm xuất phát ~100 m trên đoạn cao tốc thẳng (NHTSA #26 Lead Vehicle Stopped, Euro NCAP CCRs). Kỳ vọng: ego giảm tốc và dừng sau xe, không va chạm; SUT không biết chuyển làn thì đứng chờ tới timeout (stagnation), đó cũng là một phát hiện. Spawn point đã đối chiếu map_metadata Town04 (75 → 92 cùng làn, cùng yaw), cần kiểm chứng trên CARLA.",
+    "category": "obstacle",
+    "tags": ["highway", "obstacle", "nhtsa"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town04" },
+  "route": {
+    "start": { "spawn_point_index": 75 },
+    "goal": { "spawn_point_index": 296 },
+    "speed_limit_kmh": 90,
+    "goal_tolerance_m": 10
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": { "$param": "ego_speed_kmh" },
+    "target_speed_kmh": { "$param": "ego_speed_kmh" }
+  },
+  "traffic": {
+    "npc_vehicles": { "count": { "$param": "npc_count" } }
+  },
+  "actors": [
+    {
+      "id": "stopped_car",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 92 },
+      "behavior": "idle"
+    }
+  ],
+  "events": [],
+  "parameters": {
+    "ego_speed_kmh": {
+      "type": "number", "value": 60, "min": 10, "max": 80, "step": 10, "unit": "km/h",
+      "description": "Ego test speed: the ego starts at this speed and is held to it (Euro NCAP CCRs 2026: 10–80 km/h in 10 km/h steps)."
+    },
+    "npc_count": {
+      "type": "integer", "value": 0, "min": 0, "max": 60, "step": 10,
+      "description": "Background vehicles; 0 keeps the next lane free so the SUT can change lanes to pass."
+    }
+  },
+  "execution": { "seed": 42, "timeout_s": 150 }
+}

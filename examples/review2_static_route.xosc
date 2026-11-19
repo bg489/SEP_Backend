@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" description="CARLA: Review 2 static route import" author="AutoScenarioX" date="2026-11-03T00:00:00Z"/>
+  <ParameterDeclarations/>
+  <CatalogLocations/>
+  <RoadNetwork><LogicFile filepath="Town05"/></RoadNetwork>
+  <Entities>
+    <ScenarioObject name="ego"><Vehicle name="vehicle.tesla.model3" vehicleCategory="car"/></ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init><Actions><Private entityRef="ego">
+      <PrivateAction><TeleportAction><Position><WorldPosition x="-44.3" y="-58.58" z="0.45" h="-1.576678546"/></Position></TeleportAction></PrivateAction>
+      <PrivateAction><RoutingAction><AssignRouteAction><Route name="review_route" closed="false">
+        <Waypoint routeStrategy="shortest"><Position><WorldPosition x="-44.3" y="-58.58" z="0.45" h="-1.576678546"/></Position></Waypoint>
+        <Waypoint routeStrategy="shortest"><Position><WorldPosition x="-20.188" y="-87.924" z="0.3" h="0.001500983"/></Position></Waypoint>
+      </Route></AssignRouteAction></RoutingAction></PrivateAction>
+    </Private></Actions></Init>
+    <StopTrigger><ConditionGroup><Condition name="timeout" delay="0" conditionEdge="rising"><ByValueCondition><SimulationTimeCondition value="120" rule="greaterThan"/></ByValueCondition></Condition></ConditionGroup></StopTrigger>
+  </Storyboard>
+</OpenSCENARIO>

@@ -1,0 +1,67 @@
+// Core ERD (3/3): Oracle -> Failure Analysis (Flow 3-4). Subset of docs/schema-full.dbml, key columns only.
+// Paste into https://dbdiagram.io then Auto-arrange.
+
+Table campaigns [headercolor: #185FA5] {
+  id uuid [pk]
+  Note: 'Test campaign (from Flow 2)'
+}
+
+Table simulation_runs [headercolor: #185FA5] {
+  id uuid [pk]
+  campaign_id uuid [ref: > campaigns.id]
+  verdict text [note: 'PASS | FAIL | ERROR']
+  Note: 'One execution attempt (from Flow 3)'
+}
+
+Table oracle_configs [headercolor: #185FA5] {
+  id uuid [pk]
+  version integer [unique]
+  Note: 'Immutable oracle thresholds'
+}
+
+Table run_telemetry [headercolor: #854F0B] {
+  run_id uuid [pk, ref: - simulation_runs.id]
+  telemetry_path text
+  outcome text [note: 'COMPLETED | TIMED_OUT | STOPPED_ON_VIOLATION | INFRA_FAILED']
+  Note: 'Recorded telemetry and video of a run'
+}
+
+Table evaluations [headercolor: #854F0B] {
+  id uuid [pk]
+  run_id uuid [ref: > simulation_runs.id]
+  oracle_config_id uuid [ref: > oracle_configs.id]
+  verdict text [note: 'PASS | FAIL | ERROR']
+  Note: 'Oracle verdict of a run under one config'
+}
+
+Table violations [headercolor: #854F0B] {
+  id uuid [pk]
+  evaluation_id uuid [ref: > evaluations.id]
+  check_name text
+  severity text [note: 'FAILING | WARNING']
+  t numeric
+  Note: 'Detected failure at time t'
+}
+
+Table failure_analyses [headercolor: #993C1D] {
+  id uuid [pk]
+  campaign_id uuid [unique, ref: - campaigns.id]
+  status text
+  effectiveness jsonb [note: 'APFD / APFDc']
+  Note: 'Failure analysis of one campaign'
+}
+
+Table failure_faults [headercolor: #993C1D] {
+  id uuid [pk]
+  analysis_id uuid [ref: > failure_analyses.id]
+  check_name text
+  status text
+  Note: 'Grouped fault with explanation'
+}
+
+Table failure_fault_runs [headercolor: #993C1D] {
+  fault_id uuid [pk, ref: > failure_faults.id]
+  run_id uuid [pk, ref: > simulation_runs.id]
+  is_primary boolean
+  Note: 'Runs that reveal a fault'
+}

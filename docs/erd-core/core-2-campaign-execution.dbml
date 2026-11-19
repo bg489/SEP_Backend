@@ -1,0 +1,50 @@
+// Core ERD (2/3): Campaign -> Execution (Flow 2-3). Subset of docs/schema-full.dbml, key columns only.
+// Paste into https://dbdiagram.io then Auto-arrange.
+
+Table scenario_versions [headercolor: #0F6E56] {
+  id uuid [pk]
+  content_hash text
+  map_name text
+  Note: 'Immutable READY content (from Flow 1)'
+}
+
+Table oracle_configs [headercolor: #185FA5] {
+  id uuid [pk]
+  version integer [unique]
+  Note: 'Immutable oracle thresholds'
+}
+
+Table campaigns [headercolor: #185FA5] {
+  id uuid [pk]
+  oracle_config_id uuid [ref: > oracle_configs.id]
+  strategy text
+  status text [note: 'Draft | Queued | Running | Completed | Needs review']
+  Note: 'Test campaign definition and progress'
+}
+
+Table campaign_versions [headercolor: #185FA5] {
+  campaign_id uuid [pk, ref: > campaigns.id]
+  scenario_version_id uuid [pk, ref: > scenario_versions.id]
+  sort_order integer [note: 'priority order']
+  Note: 'Prioritized scenario list of a campaign'
+}
+
+Table simulation_workers [headercolor: #185FA5] {
+  id uuid [pk]
+  host text
+  capacity integer
+  last_heartbeat_at timestamptz
+  Note: 'CARLA worker machine'
+}
+
+Table simulation_runs [headercolor: #185FA5] {
+  id uuid [pk]
+  campaign_id uuid [ref: > campaigns.id]
+  scenario_version_id uuid [ref: > scenario_versions.id]
+  worker_id uuid [ref: > simulation_workers.id]
+  previous_run_id uuid [ref: > simulation_runs.id]
+  attempt integer
+  is_current boolean
+  status text [note: 'Queued | Claimed | Running | Completed | Failed | TimedOut | Error']
+  Note: 'One execution attempt of an exact scenario version'
+}

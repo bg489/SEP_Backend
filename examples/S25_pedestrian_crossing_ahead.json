@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Pedestrian Steps Out Before Intersection",
+    "description": "A pedestrian on the right kerb, about 62 m ahead of the start, steps across the ego's lane before the intersection. Euro NCAP CPNA 2026 style: the ego starts at and holds ego_speed_kmh; once the ego is within 60 m, the runner holds the pedestrian back and then lets them walk so they reach the middle of the ego's lane (-44.3, -73.61) together with the ego, shifted by arrival_offset_s (±0.5 s at walking speed ≈ the 10–90% impact locations), so the conflict is the same at any test speed. Start spawn 203 is in the same lane as spawn 1, 28 m further back; pedestrian position derived from spawn 12 (4.5 m right of the lane). Verify on CARLA.",
+    "category": "pedestrian",
+    "tags": [
+      "pedestrian",
+      "urban",
+      "template"
+    ]
+  },
+  "source": {
+    "type": "manual"
+  },
+  "map": {
+    "name": "Town05"
+  },
+  "route": {
+    "start": {
+      "spawn_point_index": 203
+    },
+    "goal": {
+      "spawn_point_index": 87
+    },
+    "speed_limit_kmh": 60,
+    "goal_tolerance_m": 5
+  },
+  "weather": {
+    "preset": "ClearNoon"
+  },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": {
+      "$param": "ego_speed_kmh"
+    },
+    "target_speed_kmh": {
+      "$param": "ego_speed_kmh"
+    }
+  },
+  "traffic": {
+    "npc_vehicles": {
+      "count": 10
+    },
+    "pedestrians": {
+      "count": 5,
+      "crossing_probability": 0.1
+    }
+  },
+  "actors": [
+    {
+      "id": "ped_01",
+      "type": "pedestrian",
+      "blueprint": "walker.pedestrian.0001",
+      "spawn": {
+        "x": -39.89,
+        "y": -73.61,
+        "z": 1.0,
+        "yaw": 180
+      },
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_ped_cross",
+      "type": "pedestrian_crossing",
+      "description": "ped_01 steps off the right kerb into the road as the ego approaches",
+      "trigger": {
+        "type": "ego_distance_to_actor",
+        "actor_ref": "ped_01",
+        "distance_m": 60
+      },
+      "actor_ref": "ped_01",
+      "params": {
+        "speed_ms": {
+          "$param": "pedestrian_speed_ms"
+        },
+        "direction": "right_to_left",
+        "sync": {
+          "point": {
+            "x": -44.3,
+            "y": -73.61,
+            "z": 0.5
+          },
+          "offset_s": {
+            "$param": "arrival_offset_s"
+          }
+        }
+      }
+    }
+  ],
+  "parameters": {
+    "ego_speed_kmh": {
+      "type": "number",
+      "value": 40,
+      "min": 10,
+      "max": 60,
+      "step": 10,
+      "unit": "km/h",
+      "description": "Ego test speed: the ego starts at this speed and is held to it (Euro NCAP CPNA/CPFA 2026: 10–60 km/h in 10 km/h steps)."
+    },
+    "arrival_offset_s": {
+      "type": "number",
+      "value": 0,
+      "min": -0.5,
+      "max": 0.5,
+      "step": 0.25,
+      "unit": "s",
+      "description": "When the pedestrian reaches the middle of the ego lane compared with the ego: 0 = together (Euro NCAP 50% impact), positive = later (near side of the car), negative = earlier (far side); ±0.5 s at walking speed ≈ 10% / 90%."
+    },
+    "pedestrian_speed_ms": {
+      "type": "number",
+      "value": 1.4,
+      "min": 1.4,
+      "max": 2.2,
+      "step": 0.8,
+      "unit": "m/s",
+      "description": "Crossing speed: 1.4 m/s = Euro NCAP 5 km/h walking (CPNA), 2.2 m/s = 8 km/h running (CPFA)."
+    }
+  },
+  "execution": {
+    "seed": 25,
+    "timeout_s": 60
+  }
+}

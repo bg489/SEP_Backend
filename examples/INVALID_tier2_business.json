@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "INVALID - lỗi logic nghiệp vụ",
+    "description": "File này ĐÚNG cấu trúc (qua được tầng 1) nhưng sai logic, cố tình vi phạm cả 6 luật tầng 2.",
+    "category": "pedestrian"
+  },
+  "source": {
+    "type": "manual"
+  },
+  "map": {
+    "name": "Town05"
+  },
+  "route": {
+    "start": { "spawn_point_index": 12 },
+    "goal": { "spawn_point_index": 12 },
+    "speed_limit_kmh": 40
+  },
+  "weather": {
+    "preset": "ClearNoon"
+  },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3"
+  },
+  "traffic": {
+    "npc_vehicles": {
+      "count": { "$param": "npc_count_chua_khai_bao" }
+    }
+  },
+  "actors": [
+    {
+      "id": "veh_01",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 4 },
+      "behavior": "autopilot"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_cross",
+      "type": "pedestrian_crossing",
+      "description": "Sai loại actor: pedestrian_crossing lại trỏ vào một vehicle",
+      "trigger": {
+        "type": "simulation_time",
+        "time_s": 120
+      },
+      "actor_ref": "veh_01",
+      "params": {
+        "speed_ms": 1.4
+      }
+    },
+    {
+      "id": "ev_brake",
+      "type": "lead_vehicle_brake",
+      "description": "Trigger trỏ vào actor không tồn tại",
+      "trigger": {
+        "type": "ego_distance_to_actor",
+        "actor_ref": "ped_khong_ton_tai",
+        "distance_m": 10
+      },
+      "actor_ref": "veh_01",
+      "params": {
+        "deceleration_ms2": { "$param": "decel" }
+      }
+    }
+  ],
+  "parameters": {
+    "decel": {
+      "type": "number",
+      "value": 15,
+      "min": 1,
+      "max": 10,
+      "unit": "m/s2",
+      "description": "value 15 nằm ngoài khoảng [1, 10]"
+    }
+  },
+  "execution": {
+    "seed": 1,
+    "timeout_s": 60
+  }
+}

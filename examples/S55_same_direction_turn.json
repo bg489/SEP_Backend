@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Car in Next Lane Turns Across",
+    "description": "Ego đi thẳng ở làn ngoài cùng bên phải (Town03, spawn 15 → 261) qua nút giao. Xe turn_car cùng chiều đứng ở làn bên trái ngay trước nút (spawn 10, ~36 m phía trước, lệch 3.4 m); khi ego còn cách nó dưới 25 m thì rẽ phải cắt ngang làn ego để vào nhánh phải (tới spawn 8), chỉnh tốc độ (tối đa turning_speed_kmh) để cắt qua làn ego tại (-74.4, 5.0) trước ego |arrival_offset_s| giây (NHTSA #16 Vehicle(s) Turning – Same Direction). Kỳ vọng: ego phanh/nhường, không va chạm. Spawn point đối chiếu map_metadata Town03, cần kiểm chứng trên CARLA.",
+    "category": "intersection",
+    "tags": ["junction", "intersection", "turning", "nhtsa"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town03" },
+  "route": {
+    "start": { "spawn_point_index": 15 },
+    "goal": { "spawn_point_index": 261 },
+    "speed_limit_kmh": 40,
+    "goal_tolerance_m": 5
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": 30
+  },
+  "traffic": {
+    "npc_vehicles": { "count": 0 }
+  },
+  "actors": [
+    {
+      "id": "turn_car",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 10 },
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_turn_across",
+      "type": "vehicle_crossing",
+      "description": "turn_car rẽ phải từ làn trái, cắt ngang làn của ego",
+      "trigger": {
+        "type": "ego_distance_to_actor",
+        "actor_ref": "turn_car",
+        "distance_m": 25
+      },
+      "actor_ref": "turn_car",
+      "params": {
+        "destination": { "spawn_point_index": 8 },
+        "speed_kmh": { "$param": "turning_speed_kmh" },
+        "ignore_traffic_lights": false,
+        "sync": {
+          "point": { "x": -74.4, "y": 5.0, "z": 0.3 },
+          "offset_s": { "$param": "arrival_offset_s" }
+        }
+      }
+    }
+  ],
+  "parameters": {
+    "arrival_offset_s": {
+      "type": "number", "value": -1, "min": -2, "max": 1, "step": 0.5, "unit": "s",
+      "description": "How many seconds before (negative) or after the ego the other car reaches the conflict point; 0 = at the same time."
+    },
+    "turning_speed_kmh": {
+      "type": "number", "value": 30, "min": 15, "max": 40, "step": 5, "unit": "km/h",
+      "description": "Top speed of the turning car; the runner adjusts its speed to stay in sync but never exceeds this."
+    }
+  },
+  "execution": { "seed": 55, "timeout_s": 60 }
+}

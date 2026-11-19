@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Highway Cut-in Then Hard Brake",
+    "description": "Xe NPC chen vào làn ego rồi phanh gấp ngay sau khi chen xong. Hai event nối tiếp trên cùng một actor, dùng để kiểm thử khoảng cách an toàn của SUT. Chen làn kích hoạt theo vị trí ego (còn 45 m tới spawn #205, ~57 m sau start #7, trên đoạn thẳng có spawn point xác nhận); phanh dùng trigger after_event: 2 s sau khi bắt đầu chen (đúng lane_change_duration_s), không phụ thuộc tốc độ. Không dùng khoảng cách tới npc_cutter vì lúc xuất phát hai xe chỉ cách ~4 m. npc_cutter xuất phát ở làn bên trái (#6) nên chen từ trái sang (side = left); bản cũ đặt ở #4 là làn bên phải, ngược với side.",
+    "category": "cut_in",
+    "tags": ["highway", "cut-in", "braking", "imported"]
+  },
+  "source": {
+    "type": "import",
+    "format": "yaml",
+    "original_file": "highway_cutin.yaml",
+    "original_hash": "sha256:3bf4dfd8bb0042705e1a039ca9fffb4685ead8200faba198bc29d93ca5ea74f4",
+    "import_warnings": [
+      "Trường 'weather.temperature' trong file gốc không có trong schema v1.0 nên đã bỏ qua.",
+      "Trường 'execution.fixed_delta_seconds' thiếu, đã điền giá trị mặc định 0.05."
+    ]
+  },
+  "map": {
+    "name": "Town04"
+  },
+  "route": {
+    "start": { "spawn_point_index": 7 },
+    "goal": { "spawn_point_index": 45 },
+    "speed_limit_kmh": 90,
+    "goal_tolerance_m": 10
+  },
+  "weather": {
+    "preset": "ClearNoon"
+  },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": 70
+  },
+  "traffic": {
+    "npc_vehicles": {
+      "count": 15,
+      "speed_difference_percent": -10,
+      "distance_to_leading_m": 3
+    }
+  },
+  "actors": [
+    {
+      "id": "npc_cutter",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 6 },
+      "initial_speed_kmh": 80,
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_cut_in",
+      "type": "vehicle_cut_in",
+      "description": "npc_cutter chen sang làn của ego",
+      "trigger": {
+        "type": "ego_distance_to_location",
+        "location": { "spawn_point_index": 205 },
+        "distance_m": 45
+      },
+      "actor_ref": "npc_cutter",
+      "params": {
+        "side": "left",
+        "cut_in_gap_m": { "$param": "cut_in_gap_m" },
+        "lane_change_duration_s": 2
+      }
+    },
+    {
+      "id": "ev_brake",
+      "type": "lead_vehicle_brake",
+      "description": "npc_cutter phanh gấp ngay sau khi chen xong",
+      "trigger": {
+        "type": "after_event",
+        "event_ref": "ev_cut_in",
+        "delay_s": 2
+      },
+      "actor_ref": "npc_cutter",
+      "params": {
+        "deceleration_ms2": { "$param": "brake_decel" },
+        "target_speed_kmh": 0
+      }
+    }
+  ],
+  "parameters": {
+    "cut_in_gap_m": {
+      "type": "number",
+      "value": 12,
+      "min": 4,
+      "max": 30,
+      "step": 4,
+      "unit": "m",
+      "description": "Gap ahead of the ego when npc_cutter cuts in."
+    },
+    "brake_decel": {
+      "type": "number",
+      "value": 6,
+      "min": 3,
+      "max": 9,
+      "step": 1,
+      "unit": "m/s2",
+      "description": "Braking deceleration of the car ahead."
+    }
+  },
+  "execution": {
+    "seed": 7,
+    "timeout_s": 90
+  }
+}

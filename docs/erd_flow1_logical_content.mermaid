@@ -1,0 +1,108 @@
+classDiagram
+    direction LR
+    class ScenarioContent {
+        schema_version = "1.0"
+    }
+    class Metadata {
+        name
+        description
+        category
+        tags[]
+    }
+    class Source {
+        type : manual|import|clone
+        format
+        original_file
+        original_hash
+        parent_version_id
+        import_warnings[]
+    }
+    class Map {
+        name : Town01..Town10HD
+    }
+    class Route {
+        start : Location
+        waypoints : Location[]
+        goal : Location
+        speed_limit_kmh
+        goal_tolerance_m
+    }
+    class Location {
+        spawn_point_index
+        hoặc x, y, z, yaw
+    }
+    class Weather {
+        preset : ClearNoon, HardRainNoon, ...
+        cloudiness
+        precipitation
+        precipitation_deposits
+        wind_intensity
+        sun_azimuth_angle
+        sun_altitude_angle
+        fog_density
+        fog_distance
+        wetness
+    }
+    class EgoVehicle {
+        blueprint : vehicle.tesla.model3
+        role_name : hero
+        color
+        initial_speed_kmh
+    }
+    class Traffic {
+        npc_vehicles.count
+        npc_vehicles.speed_difference_percent
+        npc_vehicles.distance_to_leading_m
+        pedestrians.count
+        pedestrians.crossing_probability
+    }
+    class Actor {
+        id
+        type : vehicle|pedestrian|bicycle|static_obstacle
+        blueprint
+        spawn : Location
+        initial_speed_kmh
+        behavior : idle|scripted|autopilot
+    }
+    class Event {
+        id
+        type : pedestrian_crossing|vehicle_cut_in|lead_vehicle_brake|traffic_light_override
+        trigger : Trigger
+        actor_ref
+        params
+    }
+    class Trigger {
+        type : ego_distance_to_actor|ego_distance_to_location|simulation_time
+        distance_m / time_s
+    }
+    class Parameter {
+        type : number|integer
+        value
+        min
+        max
+        step
+        unit
+    }
+    class Execution {
+        seed
+        timeout_s
+        fixed_delta_seconds
+        synchronous_mode
+        warmup_s
+    }
+    ScenarioContent *-- Metadata
+    ScenarioContent *-- Source
+    ScenarioContent *-- Map
+    ScenarioContent *-- Route
+    ScenarioContent *-- Weather
+    ScenarioContent *-- EgoVehicle
+    ScenarioContent *-- Traffic
+    ScenarioContent *-- "0..50" Actor
+    ScenarioContent *-- "0..20" Event
+    ScenarioContent *-- "0..30" Parameter
+    ScenarioContent *-- Execution
+    Route *-- Location
+    Actor *-- Location
+    Event *-- Trigger
+    Event ..> Actor : actor_ref
+    Event ..> Parameter : "$param"

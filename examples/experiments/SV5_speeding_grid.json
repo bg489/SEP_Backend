@@ -1,0 +1,7 @@
+{
+  "namePrefix": "SV5 - Strict speed limit",
+  "note": "6 tổ hợp trên S61: mật độ NPC 0–100. Đường thoáng dự kiến speeding (giới hạn 60 km/h thấp hơn biển báo map), dày dự kiến đạt hoặc route_incomplete. Cùng seed 61.",
+  "parameterGrid": {
+    "npc_count": [0, 20, 40, 60, 80, 100]
+  }
+}

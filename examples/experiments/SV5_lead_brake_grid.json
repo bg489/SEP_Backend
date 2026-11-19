@@ -1,0 +1,8 @@
+{
+  "namePrefix": "SV5 - Lead vehicle brake",
+  "note": "12 tổ hợp trên S41: 3 tốc độ thử (cả hai xe, cách 1.0 s như Euro NCAP CCRb 2026) × 4 mức phanh. Phanh 7–9 m/s2 dự kiến collision/TTC, 3 m/s2 dự kiến đạt. Cùng seed 41.",
+  "parameterGrid": {
+    "test_speed_kmh": [40, 60, 80],
+    "brake_decel": [3, 5, 7, 9]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "namePrefix": "SV5 - Red light override",
+  "note": "12 tổ hợp trên S51: 4 khoảng cách tới vạch dừng lúc chuyển đỏ × 3 thời lượng. Đỏ khi còn 10 m (dưới quãng phanh ở 30 km/h) dự kiến red_light, đỏ 60 s dự kiến route_incomplete (timeout 75 s), còn lại dự kiến đạt. Cùng seed 51.",
+  "parameterGrid": {
+    "red_distance_m": [10, 20, 35, 50],
+    "red_duration_s": [10, 30, 60]
+  }
+}

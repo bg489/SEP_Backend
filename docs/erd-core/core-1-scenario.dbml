@@ -1,0 +1,50 @@
+// Core ERD (1/3): Scenario Library (Flow 1). Subset of docs/schema-full.dbml, key columns only.
+// Paste into https://dbdiagram.io then Auto-arrange.
+
+Table scenarios [headercolor: #0F6E56] {
+  id uuid [pk]
+  latest_version_id uuid [ref: > scenario_versions.id]
+  variant_batch_id uuid [ref: > variant_batches.id]
+  status text [note: 'ACTIVE | ARCHIVED']
+  Note: 'Scenario identity, survives across versions'
+}
+
+Table scenario_drafts [headercolor: #0F6E56] {
+  scenario_id uuid [pk, ref: - scenarios.id]
+  base_version_id uuid [ref: > scenario_versions.id]
+  row_version integer [note: 'ETag / If-Match']
+  Note: 'One editable draft per scenario'
+}
+
+Table validation_reports [headercolor: #0F6E56] {
+  id uuid [pk]
+  scenario_id uuid [ref: > scenarios.id]
+  is_valid boolean
+  stopped_at text [note: 'schema | business | carla']
+  Note: 'Three-tier validation result'
+}
+
+Table scenario_versions [headercolor: #0F6E56] {
+  id uuid [pk]
+  scenario_id uuid [ref: > scenarios.id]
+  validation_report_id uuid [ref: > validation_reports.id]
+  import_record_id uuid [ref: > import_records.id]
+  content_hash text [note: 'SHA-256']
+  status text [note: 'READY | DEPRECATED']
+  Note: 'Immutable published content'
+}
+
+Table import_records [headercolor: #0F6E56] {
+  id uuid [pk]
+  format text [note: 'json | yaml | carla_route_xml | openscenario']
+  status text [note: 'SUCCEEDED | FAILED']
+  Note: 'Imported source file'
+}
+
+Table variant_batches [headercolor: #0F6E56] {
+  id uuid [pk]
+  base_version_id uuid [ref: > scenario_versions.id]
+  parameter_grid jsonb
+  strategy text [note: 'cartesian | pairwise']
+  Note: 'Parameter grid expanded into variant scenarios'
+}

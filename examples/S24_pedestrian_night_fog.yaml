@@ -1,0 +1,86 @@
+# AutoScenarioX - ví dụ import YAML (schema v1.0)
+# Cố tình lược bớt các trường có giá trị mặc định: goal_tolerance_m, role_name,
+# direction, fixed_delta_seconds, synchronous_mode, warmup_s.
+# Import xong, các trường này phải xuất hiện trong mục 'defaulted' của báo cáo.
+schema_version: '1.0'
+metadata:
+  name: Pedestrian Crossing - Night Fog
+  description: Bản YAML dùng thử import. Cố tình thiếu các trường có giá trị mặc định
+    để kiểm tra báo cáo 'defaulted'.
+  category: pedestrian
+  tags:
+  - pedestrian
+  - night
+  - fog
+source:
+  type: manual
+map:
+  name: Town05
+route:
+  start:
+    spawn_point_index: 12
+  goal:
+    spawn_point_index: 87
+  speed_limit_kmh: 40
+weather:
+  preset: HardRainNight
+  fog_density: 60
+ego_vehicle:
+  blueprint: vehicle.tesla.model3
+traffic:
+  npc_vehicles:
+    count:
+      $param: npc_count
+  pedestrians:
+    count: 5
+    crossing_probability: 0.1
+actors:
+- id: ped_01
+  type: pedestrian
+  blueprint: walker.pedestrian.0001
+  spawn:
+    x: -30.0
+    y: -99.2
+    z: 1.0
+    yaw: 90
+  behavior: scripted
+events:
+- id: ev_ped_cross
+  type: pedestrian_crossing
+  description: ped_01 băng qua đường khi ego tới gần
+  trigger:
+    type: ego_distance_to_actor
+    actor_ref: ped_01
+    distance_m:
+      $param: trigger_distance_m
+  actor_ref: ped_01
+  params:
+    speed_ms:
+      $param: pedestrian_speed_ms
+parameters:
+  trigger_distance_m:
+    type: number
+    value: 10
+    min: 5
+    max: 30
+    step: 5
+    unit: m
+    description: Khoảng cách ego-pedestrian lúc pedestrian bắt đầu băng qua
+  pedestrian_speed_ms:
+    type: number
+    value: 1.4
+    min: 0.5
+    max: 3
+    step: 0.1
+    unit: m/s
+    description: Tốc độ đi bộ khi băng qua đường
+  npc_count:
+    type: integer
+    value: 20
+    min: 0
+    max: 60
+    step: 10
+    description: Số xe NPC nền do Traffic Manager điều khiển
+execution:
+  seed: 99
+  timeout_s: 150

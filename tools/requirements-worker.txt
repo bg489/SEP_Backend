@@ -1,0 +1,9 @@
+# Use the Python version supported by the installed CARLA 0.9.16 wheel (3.12 here).
+# Install CARLA from CARLA_ROOT/PythonAPI/carla/dist separately.
+numpy
+pygame
+opencv-python
+mss==10.2.0
+imageio-ffmpeg==0.8.0
+networkx
+shapely

@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AutoScenarioX.Api</RootNamespace>
+    <!-- Cố định để cả nhóm dùng chung lệnh user-secrets, không cần "dotnet user-secrets init" -->
+    <UserSecretsId>autoscenariox-api-dev</UserSecretsId>
+    <!-- Xuất chú thích /// để Swagger hiển thị mô tả API -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Dùng dòng phiên bản dành cho .NET 8 (8.0.x). KHÔNG nâng lên 9.x/10.x
+      vì các bản đó yêu cầu .NET 9/10. Sau lần restore đầu, có thể cố định
+      phiên bản cụ thể (xem bằng: dotnet list package).
+    -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.*" />
+    <PackageReference Include="EFCore.NamingConventions" Version="8.0.*" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.*" />
+    <!-- Validation tầng 1: JSON Schema draft 2020-12. Dòng 7.x còn hỗ trợ net8.0. -->
+    <PackageReference Include="JsonSchema.Net" Version="7.*" />
+    <!-- Xác thực JWT do Supabase Auth phát hành -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.*" />
+    <!-- Import/Export YAML (B11). Dòng 13.x nhắm netstandard2.0 nên chạy tốt trên net8.0. -->
+    <PackageReference Include="YamlDotNet" Version="13.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JSON Schema v1.0 nhúng vào DLL; đọc trong ReferenceDataService -->
+    <EmbeddedResource Include="Resources\scenario.schema.json"
+                      LogicalName="AutoScenarioX.Api.Resources.scenario.schema.json" />
+    <!-- Mẫu tạo scenario: dùng thẳng file trong examples/ (đã có test validate + đối chiếu Python) -->
+    <EmbeddedResource Include="..\..\examples\S25_pedestrian_crossing_ahead.json" LogicalName="AutoScenarioX.Api.Templates.pedestrian_crossing.json" />
+    <EmbeddedResource Include="..\..\examples\S31_cut_in_imported.json" LogicalName="AutoScenarioX.Api.Templates.cut_in_brake.json" />
+    <EmbeddedResource Include="..\..\examples\S41_lead_vehicle_brake.json" LogicalName="AutoScenarioX.Api.Templates.lead_vehicle_brake.json" />
+    <EmbeddedResource Include="..\..\examples\S42_stopped_vehicle_ahead.json" LogicalName="AutoScenarioX.Api.Templates.stopped_vehicle.json" />
+    <EmbeddedResource Include="..\..\examples\S43_slow_vehicle_ahead.json" LogicalName="AutoScenarioX.Api.Templates.slow_vehicle.json" />
+    <EmbeddedResource Include="..\..\examples\S51_red_light_intersection.json" LogicalName="AutoScenarioX.Api.Templates.red_light.json" />
+    <EmbeddedResource Include="..\..\examples\S52_crossing_vehicle_junction.json" LogicalName="AutoScenarioX.Api.Templates.crossing_vehicle.json" />
+    <EmbeddedResource Include="..\..\examples\S53_left_turn_oncoming.json" LogicalName="AutoScenarioX.Api.Templates.left_turn_oncoming.json" />
+    <EmbeddedResource Include="..\..\examples\S54_vehicle_turning_into_path.json" LogicalName="AutoScenarioX.Api.Templates.turning_into_path.json" />
+    <EmbeddedResource Include="..\..\examples\S55_same_direction_turn.json" LogicalName="AutoScenarioX.Api.Templates.same_direction_turn.json" />
+    <EmbeddedResource Include="..\..\examples\S61_speeding_open_road.json" LogicalName="AutoScenarioX.Api.Templates.open_road.json" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "Highway Lead Vehicle Hard Brake",
+    "description": "Euro NCAP CCRb 2026 style on a straight Town04 highway lane: the ego and lead_car (spawn #100, ~42 m ahead in the same lane) drive at test_speed_kmh; the runner holds lead_car time_gap_s seconds ahead of the ego, then lead_car brakes at brake_decel to a stop when the ego is within 20 m of spawn #134 (~219 m after the start, enough for the gap to settle at any test speed). Base of the SV5 lead brake grid (rear-end collision / TTC). Spawn points checked against Town04 map_metadata (75 → 100 → 134 same lane and yaw); verify on CARLA.",
+    "category": "braking",
+    "tags": ["highway", "braking", "experiment"]
+  },
+  "source": { "type": "manual" },
+  "map": { "name": "Town04" },
+  "route": {
+    "start": { "spawn_point_index": 75 },
+    "goal": { "spawn_point_index": 296 },
+    "speed_limit_kmh": 130,
+    "goal_tolerance_m": 10
+  },
+  "weather": { "preset": "ClearNoon" },
+  "ego_vehicle": {
+    "blueprint": "vehicle.tesla.model3",
+    "role_name": "hero",
+    "initial_speed_kmh": { "$param": "test_speed_kmh" },
+    "target_speed_kmh": { "$param": "test_speed_kmh" }
+  },
+  "traffic": {
+    "npc_vehicles": { "count": 10 }
+  },
+  "actors": [
+    {
+      "id": "lead_car",
+      "type": "vehicle",
+      "blueprint": "vehicle.audi.a2",
+      "spawn": { "spawn_point_index": 100 },
+      "initial_speed_kmh": { "$param": "test_speed_kmh" },
+      "behavior": "scripted"
+    }
+  ],
+  "events": [
+    {
+      "id": "ev_lead_brake",
+      "type": "lead_vehicle_brake",
+      "description": "lead_car brakes hard to a stop",
+      "trigger": {
+        "type": "ego_distance_to_location",
+        "location": { "spawn_point_index": 134 },
+        "distance_m": 20
+      },
+      "actor_ref": "lead_car",
+      "params": {
+        "deceleration_ms2": { "$param": "brake_decel" },
+        "target_speed_kmh": 0,
+        "time_gap_s": { "$param": "time_gap_s" }
+      }
+    }
+  ],
+  "parameters": {
+    "test_speed_kmh": {
+      "type": "number", "value": 50, "min": 30, "max": 130, "step": 10, "unit": "km/h",
+      "description": "Speed of both cars before the lead car brakes; the ego starts at it and is held to it (Euro NCAP CCRb 2026: 30–130 km/h in 10 km/h steps)."
+    },
+    "time_gap_s": {
+      "type": "number", "value": 1, "min": 0.5, "max": 2, "step": 0.5, "unit": "s",
+      "description": "Gap the lead car keeps ahead of the ego before braking, in seconds of travel (Euro NCAP CCRb 2026: 1.0 s)."
+    },
+    "brake_decel": {
+      "type": "number", "value": 4, "min": 2, "max": 10, "step": 1, "unit": "m/s2",
+      "description": "Braking deceleration of the lead car (Euro NCAP CCRb 2026: 4 m/s² with the cars 1.0 s apart)."
+    }
+  },
+  "execution": { "seed": 41, "timeout_s": 120 }
+}

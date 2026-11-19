@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "metadata": {
+    "name": "INVALID - lỗi cấu trúc và miền giá trị",
+    "description": "File này CỐ TÌNH sai ở tầng 1 (JSON Schema). Dùng để kiểm tra validator dừng đúng ở tầng schema và không chạy tầng 2.",
+    "category": "rain"
+  },
+  "source": {
+    "type": "import",
+    "original_file": "khong_co_format_va_hash.yaml"
+  },
+  "map": {
+    "name": "town05"
+  },
+  "route": {
+    "start": { "spawn_point_index": 12 },
+    "goal": { "spawn_point_index": 87 },
+    "speed_limit_kmh": 300
+  },
+  "weather": {
+    "preset": "RainyAfternoon"
+  },
+  "ego_vehicle": {
+    "blueprint": "Tesla Model 3"
+  },
+  "execution": {
+    "seed": 42
+  }
+}
