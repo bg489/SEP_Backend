@@ -22,6 +22,7 @@ public static class TelemetryReader
         JsonObject? header = null, end = null;
         var ticks = new List<JsonObject>();
         var events = new List<JsonObject>();
+        var lastTickTime = -1d;
 
         var lines = text.Split('\n');
         var lastLine = Array.FindLastIndex(lines, l => !string.IsNullOrWhiteSpace(l));
@@ -29,6 +30,8 @@ public static class TelemetryReader
         {
             if (string.IsNullOrWhiteSpace(lines[i])) continue;
             var lineNo = i + 1;
+            if (end is not null)
+                throw new TelemetryFormatException($"Telemetry line {lineNo}: no records are allowed after the end record.");
             JsonNode? node;
             try { node = JsonNode.Parse(lines[i]); }
             catch (JsonException)
@@ -40,15 +43,24 @@ public static class TelemetryReader
             if (node is not JsonObject record)
                 throw new TelemetryFormatException($"Telemetry line {lineNo} is not a JSON object.");
 
-            switch (RequireString(record, "kind", lineNo))
+            var kind = RequireString(record, "kind", lineNo);
+            if (header is null && kind != "header")
+                throw new TelemetryFormatException($"Telemetry line {lineNo}: the first record must be a header.");
+            switch (kind)
             {
                 case "header":
+                    if (header is not null)
+                        throw new TelemetryFormatException($"Telemetry line {lineNo}: duplicate header record.");
                     RequireString(record, "format", lineNo);
                     RequireHeaderFields(record, lineNo);
                     header = record;
                     break;
                 case "tick":
                     RequireTimeAndPostStop(record, lineNo);
+                    var tickTime = (double)record["t"]!;
+                    if (tickTime < lastTickTime)
+                        throw new TelemetryFormatException($"Telemetry line {lineNo}: tick timestamps must not decrease.");
+                    lastTickTime = tickTime;
                     RequireTickFields(record, lineNo);
                     ticks.Add(record);
                     break;
@@ -60,9 +72,12 @@ public static class TelemetryReader
                     break;
                 case "end":
                     RequireString(record, "outcome", lineNo);
+                    RequireTime(record, lineNo);
                     if (record["reason"] is not null) RequireString(record, "reason", lineNo);
                     end = record;
                     break;
+                default:
+                    throw new TelemetryFormatException($"Telemetry line {lineNo}: unsupported record kind '{kind}'.");
             }
         }
 
@@ -73,6 +88,8 @@ public static class TelemetryReader
             throw new TelemetryFormatException($"Unsupported telemetry format '{format}'.");
         if (end is null)
             throw new TelemetryFormatException("Telemetry is truncated: no end-of-run record.");
+        if (ticks.Count == 0 && (string?)end["outcome"] != "INFRA_FAILED")
+            throw new TelemetryFormatException("Telemetry has no simulation ticks; a driving verdict cannot be determined.");
 
         return new Telemetry(header, ticks, events, end);
     }
@@ -123,6 +140,8 @@ public static class TelemetryReader
         if (obj[key] is null && !required) return;
         if (obj[key] is not JsonValue v || v.GetValueKind() != JsonValueKind.Number)
             throw new TelemetryFormatException($"Telemetry line {lineNo}: '{path ?? key}' must be a number.");
+        if (!v.TryGetValue<double>(out var value) || !double.IsFinite(value))
+            throw new TelemetryFormatException($"Telemetry line {lineNo}: '{path ?? key}' must be a finite number.");
     }
 
     private static void RequireStringArray(JsonObject record, string key, int lineNo)
@@ -133,9 +152,15 @@ public static class TelemetryReader
 
     private static void RequireTimeAndPostStop(JsonObject record, int lineNo)
     {
-        if (record["t"] is not JsonValue t || t.GetValueKind() != JsonValueKind.Number)
-            throw new TelemetryFormatException($"Telemetry line {lineNo}: 't' must be a number.");
+        RequireTime(record, lineNo);
         if (record["post_stop"] is not JsonValue p || p.GetValueKind() is not (JsonValueKind.True or JsonValueKind.False))
             throw new TelemetryFormatException($"Telemetry line {lineNo}: 'post_stop' must be true or false.");
+    }
+
+    private static void RequireTime(JsonObject record, int lineNo)
+    {
+        RequireOptionalNumber(record, "t", lineNo, required: true);
+        if ((double)record["t"]! < 0)
+            throw new TelemetryFormatException($"Telemetry line {lineNo}: 't' must not be negative.");
     }
 }

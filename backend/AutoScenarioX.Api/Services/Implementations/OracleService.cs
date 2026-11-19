@@ -82,9 +82,20 @@ public sealed class OracleService(IUnitOfWork uow, IOptions<TelemetryOptions> op
         try
         {
             var read = TelemetryReader.Read(text);
-            if ((string?)read.Header["run_id"] != runId.ToString())
+            static string? HeaderText(Telemetry data, string name)
+                => data.Header[name] is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var result) ? result : null;
+            if (!Guid.TryParse(HeaderText(read, "run_id"), out var recordedRun) || recordedRun != runId)
                 throw new BusinessRuleException(ErrorCodes.TelemetryRunMismatch, "Telemetry run_id does not match this run.");
             outcome = RunOutcomes.All.FirstOrDefault(o => o == (string?)read.End["outcome"]);
+            // A recorder can fail before loading the package. That infrastructure-only report may
+            // omit package identity, but any identity it does include must still match.
+            var packageRequired = outcome != RunOutcomes.InfraFailed;
+            if ((packageRequired || read.Header.ContainsKey("scenario_version_id")) &&
+                (!Guid.TryParse(HeaderText(read, "scenario_version_id"), out var recordedVersion) || recordedVersion != run.ScenarioVersionId))
+                throw new BusinessRuleException(ErrorCodes.TelemetryRunMismatch, "Telemetry scenario_version_id does not match the selected version.");
+            if (!string.IsNullOrWhiteSpace(run.ContentHash) && (packageRequired || read.Header.ContainsKey("content_hash")) &&
+                !string.Equals(HeaderText(read, "content_hash"), run.ContentHash, StringComparison.Ordinal))
+                throw new BusinessRuleException(ErrorCodes.TelemetryRunMismatch, "Telemetry content_hash does not match the selected version.");
             duration = (decimal)(double)read.End["t"]!;
         }
         catch (TelemetryFormatException) { }

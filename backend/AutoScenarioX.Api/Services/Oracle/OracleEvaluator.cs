@@ -22,6 +22,10 @@ public static class OracleEvaluator
         Telemetry read;
         try { read = TelemetryReader.Read(telemetry); }
         catch (TelemetryFormatException e) { return Error(e.Message); }
+        static bool MarkedSynthetic(JsonNode? node)
+            => node is JsonValue value && value.TryGetValue<bool>(out var marker) && marker;
+        if (MarkedSynthetic(read.Header["simulated"]) || MarkedSynthetic(read.Header["synthetic"]))
+            return Error("Synthetic telemetry cannot establish a driving verdict. Run the scenario in CARLA.");
         var outcome = (string?)read.End["outcome"];
         if (outcome == "INFRA_FAILED")
             return Error((string?)read.End["reason"] ?? "Infrastructure failure.");

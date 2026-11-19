@@ -27,7 +27,7 @@ public class OracleServiceTests : IDisposable
         var campaignId = Guid.NewGuid();
         _run = new SimulationRun
         {
-            Id = Guid.NewGuid(), CampaignId = campaignId, ScenarioVersionId = version.Id, Status = "Running",
+            Id = Guid.NewGuid(), CampaignId = campaignId, ScenarioVersionId = version.Id, ContentHash = "sha256:test", Status = "Running",
             Campaign = new Campaign
             {
                 Id = campaignId, Name = "C", Code = "CMP-00001", OracleConfigId = _config.Id,
@@ -57,7 +57,8 @@ public class OracleServiceTests : IDisposable
 
     private Stream Telemetry(string fixture, string? runId = null) => new MemoryStream(Encoding.UTF8.GetBytes(
         File.ReadAllText(TestData.TelemetryPath(fixture))
-            .Replace("00000000-0000-0000-0000-0000000000f1", runId ?? _run.Id.ToString())));
+            .Replace("00000000-0000-0000-0000-0000000000f1", runId ?? _run.Id.ToString())
+            .Replace("00000000-0000-0000-0000-0000000000a1", _run.ScenarioVersionId.ToString())));
 
     [Fact]
     public async Task Speeding_run_is_judged_stored_and_verdict_copied_to_the_run()
@@ -80,6 +81,55 @@ public class OracleServiceTests : IDisposable
 
         Assert.Equal(ErrorCodes.TelemetryRunMismatch, e.Code);
         Assert.Equal(0, _uow.SaveCount);
+    }
+
+    [Theory]
+    [InlineData("version")]
+    [InlineData("hash")]
+    public async Task Telemetry_cannot_be_attached_to_a_different_scenario_package(string field)
+    {
+        using var valid = Telemetry("speeding.jsonl");
+        using var reader = new StreamReader(valid);
+        var text = await reader.ReadToEndAsync();
+        text = field == "version"
+            ? text.Replace(_run.ScenarioVersionId.ToString(), Guid.NewGuid().ToString())
+            : text.Replace("sha256:test", "sha256:wrong");
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => _service.SubmitTelemetryAsync(
+            _run.Id, new MemoryStream(Encoding.UTF8.GetBytes(text))));
+
+        Assert.Equal(ErrorCodes.TelemetryRunMismatch, error.Code);
+        Assert.Equal(0, _uow.SaveCount);
+        Assert.False(Directory.Exists(_dir));
+    }
+
+    [Fact]
+    public async Task Identical_telemetry_retry_returns_existing_result_without_adding_an_evaluation()
+    {
+        using var first = Telemetry("speeding.jsonl");
+        await _service.SubmitTelemetryAsync(_run.Id, first);
+        _run.Telemetry = new RunTelemetry { RunId = _run.Id };
+
+        var result = await _service.SubmitTelemetryAsync(_run.Id, Telemetry("speeding.jsonl"));
+
+        Assert.Equal("FAIL", result.Verdict);
+        Assert.Equal(1, _uow.SaveCount);
+        _uow.Runs.Received(1).AddEvaluation(Arg.Any<Evaluation>());
+        _uow.Runs.Received(1).AddTelemetry(Arg.Any<RunTelemetry>());
+    }
+
+    [Fact]
+    public async Task Infrastructure_report_before_package_load_accepts_missing_package_identity()
+    {
+        var text = $$"""
+            {"kind":"header","format":"asx.telemetry/1","run_id":"{{_run.Id}}"}
+            {"kind":"end","t":0,"outcome":"INFRA_FAILED","reason":"CARLA could not load the map"}
+            """;
+
+        var result = await _service.SubmitTelemetryAsync(_run.Id, new MemoryStream(Encoding.UTF8.GetBytes(text)));
+
+        Assert.Equal("ERROR", result.Verdict);
+        Assert.Contains("CARLA could not load the map", _saved!.ErrorReason);
     }
 
     [Fact]
