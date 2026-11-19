@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using AutoScenarioX.Api.Common.Auth;
 using AutoScenarioX.Api.Controllers.Auth;
+using AutoScenarioX.Api.DTOs.Campaigns;
 using AutoScenarioX.Api.DTOs.FailureAnalysis;
 using AutoScenarioX.Api.DTOs.Oracle;
 using AutoScenarioX.Api.Models.Entities;
@@ -160,16 +161,64 @@ public class ScenarioLifecycleHttpTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync($"/api/v1/campaigns/{Guid.NewGuid()}/failure-analysis/review", new { decision = "APPROVE" })).StatusCode);
     }
 
+    [Theory]
+    [InlineData(AppRoles.ScenarioEngineer, false)]
+    [InlineData(AppRoles.TestEngineer, true)]
+    [InlineData(AppRoles.TestReviewer, false)]
+    [InlineData(AppRoles.Admin, true)]
+    public async Task Only_test_engineer_and_admin_can_create_edit_start_or_rerun_campaigns(string role, bool allowed)
+    {
+        using var factory = new LifecycleFactory();
+        using var client = factory.Client(role);
+        var id = Guid.NewGuid();
+
+        var create = await client.PostAsJsonAsync("/api/v1/campaigns", new { name = "Policy campaign" });
+        var edit = await client.PatchAsJsonAsync($"/api/v1/campaigns/{id}", new { name = "Edited campaign" });
+        var start = await client.PostAsync($"/api/v1/campaigns/{id}/start", null);
+        var rerun = await client.PostAsync($"/api/v1/campaigns/{id}/rerun", null);
+
+        Assert.Equal(allowed ? HttpStatusCode.Created : HttpStatusCode.Forbidden, create.StatusCode);
+        Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, edit.StatusCode);
+        Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, start.StatusCode);
+        Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, rerun.StatusCode);
+        await factory.Campaigns.Received(allowed ? 1 : 0).CreateAsync(Arg.Any<CreateCampaignRequest>(), Arg.Any<CancellationToken>());
+        await factory.Campaigns.Received(allowed ? 1 : 0).UpdateAsync(id, Arg.Any<UpdateCampaignRequest>(), Arg.Any<CancellationToken>());
+        await factory.Campaigns.Received(allowed ? 1 : 0).StartAsync(id, Arg.Any<CancellationToken>());
+        await factory.Campaigns.Received(allowed ? 1 : 0).RerunAsync(id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Campaign_mutations_without_identity_return_401_before_invoking_services()
+    {
+        using var factory = new LifecycleFactory();
+        using var client = factory.CreateClient();
+        var id = Guid.NewGuid();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/v1/campaigns", new { name = "Anonymous" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PatchAsJsonAsync($"/api/v1/campaigns/{id}", new { name = "Anonymous" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync($"/api/v1/campaigns/{id}/start", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync($"/api/v1/campaigns/{id}/rerun", null)).StatusCode);
+        Assert.Empty(factory.Campaigns.ReceivedCalls());
+    }
+
     public sealed class LifecycleFactory : WebApplicationFactory<AuthController>
     {
         public Dictionary<Guid, Scenario> Scenarios { get; } = [];
         public Dictionary<Guid, ScenarioDraft> Drafts { get; } = [];
         public Dictionary<Guid, ScenarioVersion> Versions { get; } = [];
+        public ICampaignService Campaigns { get; } = Substitute.For<ICampaignService>();
         private readonly Dictionary<Guid, ValidationReport> _reports = [];
         private readonly FakeUnitOfWork _uow = new();
 
         public LifecycleFactory()
         {
+            var campaign = new CampaignResponse(Guid.NewGuid(), "CMP-HTTP", "Policy campaign", null,
+                "proposed_failure_history", "Queued", 0, 0, 0, "1m", "HTTP test", DateTimeOffset.UtcNow,
+                null, new("behavior_agent", "normal", "0.9.16"), [], [], 0);
+            Campaigns.CreateAsync(Arg.Any<CreateCampaignRequest>(), Arg.Any<CancellationToken>()).Returns(campaign);
+            Campaigns.UpdateAsync(Arg.Any<Guid>(), Arg.Any<UpdateCampaignRequest>(), Arg.Any<CancellationToken>()).Returns(campaign);
+            Campaigns.StartAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(campaign);
+            Campaigns.RerunAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(campaign);
             _uow.Scenarios.When(r => r.Add(Arg.Any<Scenario>())).Do(call => { var entity = call.Arg<Scenario>(); entity.Code = "SCN-HTTP"; Scenarios[entity.Id] = entity; });
             _uow.Scenarios.GetReadOnlyAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(call => Task.FromResult(Scenarios.GetValueOrDefault(call.Arg<Guid>())));
             _uow.Scenarios.FindAsync(Arg.Any<object[]>(), Arg.Any<CancellationToken>()).Returns(call => Task.FromResult(Scenarios.GetValueOrDefault((Guid)call.Arg<object[]>()[0])));
@@ -208,6 +257,8 @@ public class ScenarioLifecycleHttpTests
             {
                 services.RemoveAll<IUnitOfWork>();
                 services.AddSingleton<IUnitOfWork>(_uow);
+                services.RemoveAll<ICampaignService>();
+                services.AddSingleton(Campaigns);
                 services.RemoveAll<IScenarioValidator>();
                 services.AddSingleton<IScenarioValidator>(TestData.CreateValidator());
                 services.AddScoped<IAdminUsersService, AdminUsersService>();
