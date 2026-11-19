@@ -31,6 +31,16 @@ EXPECTED_MAPS = (
 
 
 class MapNamesTests(unittest.TestCase):
+    def test_default_installation_discovery_follows_checkout_ancestors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            repository = parent / "Project" / "Backend"
+            root = parent / "CARLA" / "CARLA_0.9.16"
+            root.mkdir(parents=True)
+            (root / "CarlaUE4.exe").touch()
+            with patch.object(Path, "home", return_value=parent / "user"):
+                self.assertEqual(carla_maps.default_carla_root(repository), str(root))
+
     def test_catalogue_is_exactly_the_twelve_supported_maps(self):
         self.assertEqual(set(carla_maps.SUPPORTED_MAPS), set(EXPECTED_MAPS))
         self.assertEqual(len(carla_maps.SUPPORTED_MAPS), 12)
@@ -257,6 +267,18 @@ class WorkerTests(unittest.TestCase):
     def _claimed(self, suffix="one"):
         return {"runId": f"run-{suffix}", "scenarioVersionId": f"version-{suffix}", "sutBehavior": "cautious", "seed": 73,
                 "infraRetryCount": 0, "maxInfraRetries": 0}
+
+    def test_fixture_upload_never_starts_or_connects_to_carla(self):
+        fixture = self.root / "fixture.jsonl"
+        fixture.write_text('{"kind":"end","outcome":"TRUNCATED","t":1}\n', encoding="utf-8")
+        self.args.fixture = str(fixture)
+        with patch.object(worker, "ensure_carla") as ensure, patch.object(worker, "record_run") as record, \
+                patch.object(worker, "mark_running"), patch.object(worker, "put_telemetry", return_value={"verdict": "ERROR"}) as upload, \
+                patch.object(worker, "requeue_infra"):
+            worker.run_one("http://fixture.invalid", self._claimed(), self.args)
+        ensure.assert_not_called()
+        record.assert_not_called()
+        self.assertEqual(upload.call_args.args[2], fixture.read_text(encoding="utf-8"))
 
     def test_package_fetch_failure_reports_infra_instead_of_leaving_the_claim(self):
         with patch.object(worker, "fetch_package", side_effect=RuntimeError("fixture package unavailable")), \

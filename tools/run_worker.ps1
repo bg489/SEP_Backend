@@ -2,7 +2,18 @@
 # No database changes, package installation or simulator startup occur with -ListMaps.
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$carlaRoot = if ($env:CARLA_ROOT) { $env:CARLA_ROOT } else { "C:\Users\admin\Downloads\CARLA_0.9.16" }
+$carlaRoot = $env:CARLA_ROOT
+if (-not $carlaRoot) {
+    $rootCandidates = @((Join-Path ([Environment]::GetFolderPath("UserProfile")) "Downloads\CARLA_0.9.16"))
+    $ancestor = [IO.DirectoryInfo]$repositoryRoot
+    while ($ancestor) {
+        $rootCandidates += Join-Path $ancestor.FullName "CARLA\CARLA_0.9.16"
+        $rootCandidates += Join-Path $ancestor.FullName "CARLA_0.9.16"
+        $ancestor = $ancestor.Parent
+    }
+    $carlaRoot = $rootCandidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ "CarlaUE4.exe") -PathType Leaf } | Select-Object -First 1
+    if (-not $carlaRoot) { $carlaRoot = $rootCandidates[0] }
+}
 $apiAddress = if ($env:ASX_API) { $env:ASX_API } else { "http://localhost:5080" }
 $quick = $false
 $listMaps = $false

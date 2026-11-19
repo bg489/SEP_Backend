@@ -13,6 +13,15 @@ SUPPORTED_MAPS = tuple(
 _CANONICAL = {name.casefold(): name for name in SUPPORTED_MAPS}
 
 
+def default_carla_root(repository_root=None) -> str:
+    """Locate a nearby installation without binding launchers to one user's drive."""
+    repository = Path(repository_root or Path(__file__).resolve().parent.parent)
+    candidates = [Path.home() / "Downloads" / "CARLA_0.9.16"]
+    for ancestor in (repository, *repository.parents):
+        candidates.extend((ancestor / "CARLA" / "CARLA_0.9.16", ancestor / "CARLA_0.9.16"))
+    return str(next((root for root in candidates if (root / "CarlaUE4.exe").is_file()), candidates[0]))
+
+
 def normalize_map_name(value: str) -> str:
     """Resolve CARLA map/Unreal asset paths without substring matching or aliases."""
     if not isinstance(value, str) or not value.strip():

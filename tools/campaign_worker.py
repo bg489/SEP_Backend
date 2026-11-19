@@ -26,9 +26,9 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import carla_recorder  # noqa: E402
-from carla_maps import SUPPORTED_MAPS, discover_installed_maps, normalize_map_name, require_installed_map  # noqa: E402
+from carla_maps import SUPPORTED_MAPS, default_carla_root, discover_installed_maps, normalize_map_name, require_installed_map  # noqa: E402
 
-DEFAULT_CARLA_ROOT = r"C:\Users\admin\Downloads\CARLA_0.9.16"
+DEFAULT_CARLA_ROOT = default_carla_root(ROOT)
 
 
 def carla_root(args) -> str:
@@ -134,7 +134,7 @@ def requeue_infra(base: str, run_id: str):
 
 
 def telemetry_from_fixture(path: str, run_id: str) -> str:
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     return text.replace("00000000-0000-0000-0000-0000000000f1", run_id)
 
 
@@ -488,7 +488,6 @@ def run_one(base: str, claimed: dict, args) -> dict:
         text = simulated_pass_telemetry(run_id)
         print("  SIMULATED telemetry (no CARLA) — GPU/infra workaround")
     elif args.fixture:
-        ensure_carla(args)
         mark_running(base, run_id)
         print("  status → Running")
         text = telemetry_from_fixture(args.fixture, run_id)

@@ -4,9 +4,8 @@ The worker follows the map in each run's immutable execution package. A campaign
 can contain different maps; the launcher no longer selects only Town10 campaigns.
 No campaign ID means that the worker polls the backend queue until stopped.
 
-The installation at `C:\Users\admin\Downloads\CARLA_0.9.16` contains these twelve
-The installation at `D:\Download\CARLA_0.9.16` contains these twelve
-scenario maps:
+The supported CARLA 0.9.16 package contains these twelve scenario maps. The
+launcher checks the local map assets before claiming work:
 
 | Town | Maps |
 | --- | --- |
@@ -26,20 +25,29 @@ installed town maps, not the generated `OpenDriveMap` utility map.
 Start the .NET API on port 5080 and start a campaign from the frontend. Then:
 
 ```powershell
-cd "C:\Users\admin\Desktop\Hoc Bai\SEP\Project\AutoScenarioX\AutoScenarioX"
-.\Start-ASX-Worker.bat
+# From this Backend checkout. Select the installation explicitly if needed.
+$env:CARLA_ROOT = "<CARLA installation directory>"
+$env:ASX_API = "http://localhost:5080"
+.\tools\run_worker.ps1
 ```
 
-The BAT invokes `tools\run_worker.ps1`, which chooses an existing Python
-environment and starts `tools\campaign_worker.py`. It does not start the .NET API
+The launcher chooses an existing Python environment and starts
+`tools\campaign_worker.py`. It does not start the .NET API
 or install packages. CARLA is always started with Low quality. A run uses its own
 scenario timeout; "Full" does not impose a fixed ninety-second duration.
 
-The launcher uses `CARLA_ROOT` when set, otherwise the installation above.
+The launcher uses `--carla-root` or `CARLA_ROOT` when set. Otherwise it searches
+the current user's Downloads and the checkout's ancestor directories for
+`CARLA\CARLA_0.9.16` or `CARLA_0.9.16`. No drive or user name is fixed in the launcher.
 `ASX_PYTHON` can select an existing Python executable. Otherwise it tries
 `CARLA_ROOT\ScenarioRunner\.venv\Scripts\python.exe`, the repository `.venv`,
 `py -3.12`, then an installed `python.exe`. Using an environment inside the
 ScenarioRunner directory does not mean the worker invokes ScenarioRunner.
+
+For Supabase authentication set `ASX_ACCESS_TOKEN` to a worker-authorized access
+token. A token uses the Bearer header and takes precedence over development role
+headers. The `ASX_DEV_ROLE` header fallback is only for an API configured with
+development authentication; it defaults to `TEST_ENGINEER`.
 
 ```powershell
 # Inventory only: reads local map assets, does not claim a run or open CARLA.
@@ -92,13 +100,10 @@ send a terminal callback so the run is not left stuck at Claimed or Running.
 Offline checks:
 
 ```powershell
-<<<<<<< HEAD
-& "C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" -m unittest discover -s tools -p test_campaign_worker.py -v
-& "C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" tools/test_carla_recorder.py
-=======
-& "D:\Download\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" -m unittest discover -s tools -p test_campaign_worker.py -v
-& "D:\Download\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" tools/test_carla_recorder.py
->>>>>>> thuan
+python -m unittest discover -s tools -p test_campaign_worker.py -v
+python -m unittest discover -s tools -p test_execution_runtime.py -v
+# This file uses its own entry point; unittest discovery alone runs none of its checks.
+python tools/test_carla_recorder.py
 ```
 
 Optional real map smoke checks use a separate simulator on RPC 2010. They do not
@@ -107,15 +112,11 @@ run BehaviorAgent briefly, check that Ego moves and save original ticks. `TRUNCA
 smoke recording, not a PASS verdict for the scenario.
 
 ```powershell
-<<<<<<< HEAD
-& "C:\Users\admin\Downloads\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" tools/smoke_carla_maps.py
-=======
-& "D:\Download\CARLA_0.9.16\ScenarioRunner\.venv\Scripts\python.exe" tools/smoke_carla_maps.py
->>>>>>> thuan
+& "$env:CARLA_ROOT\ScenarioRunner\.venv\Scripts\python.exe" tools/smoke_carla_maps.py --carla-root "$env:CARLA_ROOT"
 ```
 
-Validated locally on 2026-10-28: all twelve exact maps loaded in sequence at Low
-quality on RPC 2010. Each map spawned a real Ego, produced 21 simulation ticks
-and recorded measurable movement during a one-second recording. The 27 worker
-unit tests and 9 recorder helper checks also passed. These short map checks do
-not validate a full campaign, backend callbacks or every scripted event.
+The commands above describe how to verify a particular installation. Passing
+offline tests does not establish real simulator acceptance. Record the output
+of real map/campaign checks separately, including each map, Oracle result and
+video/telemetry artifacts. Fixture mode (`--fixture`) does not start CARLA; it
+uploads the supplied telemetry to the selected API and is not real acceptance.
