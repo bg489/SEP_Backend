@@ -61,6 +61,8 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f "$migration" >> TestResults/database-migrations.log
           done
           psql -v ON_ERROR_STOP=1 -f database/seeds/review2_demo.sql >> TestResults/database-migrations.log
+      - name: Verify supplied core schema contract
+        run: python tools/verify_schema_contract.py --output TestResults/schema-contract.json
       - name: Restore .NET tests
         run: dotnet restore backend/AutoScenarioX.Api.Tests/AutoScenarioX.Api.Tests.csproj
       - name: Build
@@ -73,6 +75,7 @@ jobs:
           set -euo pipefail
           python -m unittest discover -s tools -p test_campaign_worker.py -v 2>&1 | tee TestResults/worker.log
           python -m unittest discover -s tools -p test_execution_runtime.py -v 2>&1 | tee TestResults/execution-runtime.log
+          python -m unittest discover -s tools -p test_carla_probe.py -v 2>&1 | tee TestResults/probe-lifecycle.log
       - name: Recorder offline regressions
         shell: bash
         run: |
