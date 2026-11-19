@@ -40,3 +40,8 @@ telemetry-store/
 TestResults/
 coverage/
 recordings/
+appsettings.Local.json
+*.db
+*.db-shm
+*.db-wal
+CONTEXT.md

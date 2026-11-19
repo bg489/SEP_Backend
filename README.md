@@ -1,5 +1,17 @@
 # AutoScenarioX
 
+This repository's active API is `backend/AutoScenarioX.Api` (.NET 8), using the
+versioned `/api/v1` contract consumed by `SEP_Frontend`. The previous .NET 10
+Identity host is preserved under `legacy/identity-api` for reference and is not
+started alongside the active API. No existing application's database is reset
+by this source migration.
+
+Week 2 implementation branch: `feature/week2-completion-20261119` in both
+`bg489/SEP_Backend` and `bg489/SEP_Frontend`. See
+[`docs/week2-verification.md`](docs/week2-verification.md) for current validation,
+environment setup and task acceptance limits. Historical Review 2 evidence is
+kept separately and must not be presented as a new test run.
+
 AutoScenarioX is a scenario-based testing platform for autonomous driving software, built on the CARLA simulator. Instead of developing a driving AI, the platform tests an existing one (CARLA Behavior Agent / Autopilot) by generating driving scenarios, executing them in simulation, detecting failures with an automated test oracle, explaining those failures, and prioritising the scenarios most likely to reveal faults (APFD/APFDc).
 
 > Capstone project – Software Engineering, FPT University (09/2026 – 03/2027).
@@ -26,10 +38,10 @@ Create scenario → Run on CARLA → Test Oracle detects failures → Failure an
 | Flow | Module | Main Actor | Status |
 |---|---|---|---|
 | 1 | Scenario Management & Configuration | Scenario Engineer | Done |
-| 2 | Test Campaign & CARLA Execution | Test Engineer | Starting |
-| 3 | Telemetry & Automated Test Oracle | System | In progress (needs migration 105) |
-| 4 | Failure Analysis & Explainability | Test Reviewer | Planned |
-| 5 | Administration (users, CARLA config, oracle thresholds, dashboard) | Administrator | Planned |
+| 2 | Prioritization & Similarity | Test Engineer | Implemented; Gower/DTW v1 and observed Oracle history |
+| 3 | Campaign, CARLA Execution & Oracle | Test Engineer / System | Implemented; worker leases, linked retries, progress, telemetry and video |
+| 4 | Failure Analysis & Explainability | Test Reviewer | Implemented; persisted ordered review workflow |
+| 5 | Accounts, workers, Oracle versions & settings | Administrator | Implemented; provider configuration required for Supabase Auth/Storage |
 
 ## Tech Stack
 
@@ -77,8 +89,9 @@ AutoScenarioX/
 ### 1. Clone the repository
 
 ```sh
-git clone https://github.com/huylh14/AutoScenarioX.git
-cd AutoScenarioX
+git clone https://github.com/bg489/SEP_Backend.git
+cd SEP_Backend
+git switch feature/week2-completion-20261119
 ```
 
 ### 2. Backend Setup

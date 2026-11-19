@@ -1,4 +1,10 @@
-# Review 2 chạy và kiểm tra
+# Historical Review 2 runbook (2026-11-03)
+
+This entire document describes the previous Review 2 source and environment.
+Use [week2-verification.md](week2-verification.md) for the current
+`feature/week2-completion-20261119` branches, commands, workflow contracts and
+actual acceptance limits. Old test counts, commits, URLs and simulator runs below
+must not be counted as checks executed against the current branches.
 
 Hai repo dùng nhánh `feature/review2-completion-20261103`. Không merge hoặc push vào main.
 Mã nguồn kiểm thử nằm trong repo, không cần một phần mềm kiểm thử riêng bên ngoài.
@@ -43,7 +49,7 @@ CI chạy trên push nhánh, PR và tag `review-2`. Lỗi test làm job thất b
 
 ## Bằng chứng và phạm vi
 
-`docs/review2-evidence.json` ghi revision, CI URL, 12 map/run/version, kiểm tra Autopilot và browser tới CARLA. Bộ hiện tại có 406 .NET, 53 Python, 95 Vitest và 68 Playwright invocations; chúng không phải tổng số test chức năng duy nhất. Hợp đồng frontend đã kiểm tra 88/88 HTTP operations bằng dữ liệu giả lập.
+`docs/evidence/review2-20261103-historical.json` ghi bằng chứng lịch sử: revision, CI URL, map/run/version, Autopilot và browser tới CARLA. Số cũ là 406 .NET, 53 Python, 95 Vitest và 68 Playwright invocations; không phải tổng test chức năng duy nhất và không phải kết quả của nhánh hiện tại.
 
 Đã chạy local với PostgreSQL 18 riêng, CARLA 0.9.16 Low và API thật. Thao tác Admin được đọc lại từ database. Video, JSONL, ảnh, TRX và ba Report 5 nằm trong thư mục `outputs/review2-20261103`. Oracle có thể trả FAIL khi xe vi phạm; đó là kết quả được giữ lại.
 

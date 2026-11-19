@@ -1,12 +1,12 @@
 # Telemetry `asx.telemetry/1`
 
-Hợp đồng giữa runner (SV2, ghi) và Oracle (SV3, đọc). Thuật ngữ theo `CONTEXT.md`; lý do thiết kế ở
+Hợp đồng giữa runner (SV2, ghi) và Oracle (SV3, đọc). Lý do thiết kế ở
 [ADR 0001](adr/0001-offline-versioned-oracle.md). File mẫu Oracle chấp nhận: `examples/telemetry/*.jsonl`.
 
 ## 1. Dạng file
 
 - **JSON Lines**, UTF-8: mỗi dòng một object, phân loại bằng `"kind"`. Một file cho một Run.
-- Thứ tự: `header` đầu tiên, sau đó `tick` và `event` theo thời gian mô phỏng, `end` cuối cùng.
+- Thứ tự: đúng một `header` đầu tiên, `tick` và `event`, đúng một `end` cuối cùng. Thời gian của các `tick` phải tăng; sensor event có thể được callback trễ và giữ thời gian gốc trước tick vừa ghi.
 - Thời gian `t` là giây mô phỏng tính từ khi Run bắt đầu. Toạ độ, vận tốc theo hệ toạ độ thế giới CARLA (m, m/s, độ).
 - Khi lưu, file được nén gzip (việc của tầng lưu trữ; nội dung không đổi).
 
@@ -22,7 +22,7 @@ Hợp đồng giữa runner (SV2, ghi) và Oracle (SV3, đọc). Thuật ngữ t
 
 Trường header tùy chọn Oracle đọc (sai kiểu → ERROR): `goal {x,y}` (Route completion, Freezing), `warmup_s` (Freezing bỏ qua đoạn đầu), `route_speed_limit_kmh` (Speeding ưu tiên hơn `ego.speed_limit_kmh` khi có). Thiếu `goal` thì không xét Route completion cho Run COMPLETED.
 
-`format` khác `asx.telemetry/1` → Oracle trả ERROR. Đổi không tương thích thì tăng lên `asx.telemetry/2`.
+`format` khác `asx.telemetry/1` → Oracle trả ERROR. Header phải khớp run, scenario version và content hash đã xếp hàng. Marker simulated/fixture không được dùng làm bằng chứng PASS. Đổi không tương thích thì tăng lên `asx.telemetry/2`.
 `ego_extent`: nửa chiều dài (`x`) và nửa chiều rộng (`y`) bounding box của ego (m), không đổi trong Run.
 
 ### `tick` (mỗi tick mô phỏng, không lấy mẫu thưa)
@@ -67,13 +67,14 @@ Mọi event đều có `t` và `post_stop`.
 ## 3. Quy tắc cho runner
 
 - Chỉ dừng Run khi có Collision hoặc Red-light running, rồi ghi tiếp 1 s với `post_stop: true`, sau đó ghi `end`.
-- Không có `end` → Oracle coi file bị cắt ngang và trả ERROR. Dòng giữa file không phải JSON object, hoặc `kind`, `format`, `type`, `outcome`, `reason` không phải chuỗi, `t` không phải số, `post_stop` không phải true/false → cũng ERROR, kèm số dòng. Hạ tầng hỏng thì vẫn cố ghi `end` với `INFRA_FAILED`.
+- Không có `end`, thiếu tick đo được, header/end trùng hoặc loại bản ghi không hợp lệ → Oracle trả ERROR. Dòng giữa file không phải JSON object, hoặc `kind`, `format`, `type`, `outcome`, `reason` không phải chuỗi, `t` không phải số hữu hạn, `post_stop` không phải true/false → cũng ERROR, kèm số dòng. Hạ tầng hỏng thì vẫn cố ghi `end` với `INFRA_FAILED`.
 - Ghi dữ liệu thô, không tự lọc "actor liên quan": việc chọn thuộc về Oracle để còn chấm lại được.
 
 ## 4. Ghi Telemetry thật để thử Oracle
 
-`tools/carla_recorder.py` là công cụ dev của Flow 3, **không phải** runner Flow 2: đọc một gói chạy đã lưu,
-dựng scenario trong CARLA, cho BehaviorAgent lái ego và ghi `recordings/*.jsonl` (đã gitignore).
+`tools/carla_recorder.py` đọc gói chạy đã lưu, dựng scenario trong CARLA, chạy Ego bằng
+BehaviorAgent hoặc Autopilot đã chọn và ghi telemetry. Worker Flow 3 gọi recorder trong
+tiến trình riêng; bản ghi/video thật được upload qua API theo run.
 
 1. Cài Python 3.12 (wheel `carla==0.9.16` chưa có cho bản mới hơn), tạo venv, `pip install carla==0.9.16`.
 2. Wheel **không** có gói `agents`: đặt `CARLA_ROOT` tới thư mục CARLA 0.9.16 đã tải, rồi
@@ -90,5 +91,10 @@ Collision → ghi thêm 1 s rồi `STOPPED_ON_VIOLATION`; exception hoặc Ctrl+
 ego bị phanh, tick vẫn được ghi từ `t = 0`; trigger `simulation_time` cũng tính sau warmup. Lỗi trước khi Run
 bắt đầu (nạp map, spawn, lập route) không tạo file, chỉ in lỗi và thoát.
 
-Chưa hiện thực: event `vehicle_cut_in`, `traffic_light_override` (bỏ qua kèm cảnh báo), event `red_light`
-(làm cùng Check Red-light, tham khảo `RunningRedLightTest` của ScenarioRunner), SUT Autopilot.
+Có thực thi năm event: `pedestrian_crossing`, `lead_vehicle_brake`, `vehicle_cut_in`,
+`vehicle_crossing`, `traffic_light_override`; và năm trigger: `simulation_time`,
+`ego_distance_to_actor`, `ego_distance_to_location`, `after_event`, `time_to_collision`.
+Event ID/actor reference/dependency được kiểm tra trước khi chạy, action chỉ kích hoạt
+một lần. Event bắt buộc không kích hoạt thì kết quả là lỗi hạ tầng, không PASS.
+Synchronized arrival và `lead_vehicle_brake.params.time_gap_s` chưa được hỗ trợ và bị
+từ chối rõ ràng thay vì bị bỏ qua.
