@@ -23,6 +23,41 @@ public sealed class PostgreSqlReview2Tests
         .UseNpgsql(ConnectionString()).UseSnakeCaseNamingConvention().Options);
 
     [PostgreSqlFact]
+    public async Task Independent_account_mutations_wait_for_the_same_administration_lock()
+    {
+        await using var first = Db();
+        await using var second = Db();
+        await using var firstTransaction = await first.Database.BeginTransactionAsync();
+        await using var secondTransaction = await second.Database.BeginTransactionAsync();
+        await new AppUserRepository(first).LockAdministrationAsync();
+        var waiting = new AppUserRepository(second).LockAdministrationAsync();
+        var waitingPid = ((NpgsqlConnection)second.Database.GetDbConnection()).ProcessID;
+        try
+        {
+            await using var observer = new NpgsqlConnection(ConnectionString());
+            await observer.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=@pid AND locktype='advisory' AND NOT granted)", observer);
+            command.Parameters.AddWithValue("pid", waitingPid);
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            var blocked = false;
+            while (!blocked && DateTimeOffset.UtcNow < deadline)
+            {
+                blocked = (bool)(await command.ExecuteScalarAsync())!;
+                if (!blocked) await Task.Delay(20);
+            }
+            Assert.True(blocked, "The second account update must wait before reading the administrator count.");
+            Assert.False(waiting.IsCompleted);
+        }
+        finally
+        {
+            await firstTransaction.CommitAsync();
+            await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        await secondTransaction.CommitAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task Settings_and_comparison_survive_a_new_connection()
     {
         var comparison = new SimilarityAnalysis { Id = Guid.NewGuid(), Method = "gower", ResultJson = "{\"fixture\":true}", CreatedAt = DateTimeOffset.UtcNow };

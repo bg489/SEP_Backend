@@ -73,6 +73,12 @@ public class AdminUsersServiceTests
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => _service.UpdateAsync(_target.Id, new UpdateUserRequest { Role = AppRoles.TestEngineer }));
         Assert.Equal("LAST_ADMIN_REQUIRED", error.Code);
         Assert.Equal(0, _uow.SaveCount);
+        Received.InOrder(() =>
+        {
+            _uow.AppUsers.LockAdministrationAsync(Arg.Any<CancellationToken>());
+            _uow.AppUsers.FindAsync(Arg.Any<object[]>(), Arg.Any<CancellationToken>());
+            _uow.AppUsers.CountActiveAdminsAsync(Arg.Any<CancellationToken>());
+        });
     }
 
     [Fact]

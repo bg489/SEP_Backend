@@ -35,6 +35,7 @@ public sealed class AdminUsersService(IUnitOfWork uow, ICurrentUser currentUser)
         if (role is not null && !AppRoles.All.Contains(role)) throw Invalid("role", "Unknown role.");
         return await uow.ExecuteInTransactionAsync(async token =>
         {
+            await uow.AppUsers.LockAdministrationAsync(token);
             var user = await uow.AppUsers.FindAsync([id], token)
                 ?? throw new NotFoundException("USER_NOT_FOUND", "The account was not found.");
             if (user.Id == currentUser.UserId && ((role is not null && role != user.Role) || request.IsActive == false))

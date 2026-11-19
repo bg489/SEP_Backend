@@ -20,6 +20,16 @@ public class AppUserRepository(AsxDbContext db)
     public Task<int> CountActiveAdminsAsync(CancellationToken ct = default)
         => Set.CountAsync(u => u.IsActive && u.Role == "ADMIN", ct);
 
+    public Task LockAdministrationAsync(CancellationToken ct = default)
+    {
+        if (Db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Account administration must run inside a transaction.");
+        // A single transaction-scoped lock also serializes changes to different administrator rows.
+        // Locking only the target row lets two administrators both observe a count of two.
+        // Match protect_last_active_admin() so direct SQL removals use the same lock.
+        return Db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(270011503)", ct);
+    }
+
     public async Task<(IReadOnlyList<AppUser> Items, int Total)> SearchAsync(string? search, string? role, bool? isActive, int page, int pageSize, CancellationToken ct = default)
     {
         var query = Set.AsNoTracking();
