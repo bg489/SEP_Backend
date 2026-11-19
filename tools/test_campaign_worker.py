@@ -103,11 +103,7 @@ class WorkerTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
 
     def test_wait_map_does_not_accept_opt_as_the_plain_map(self):
-        fake_carla = Mock()
-        fake_carla.Client.return_value.get_world.return_value.get_map.return_value.name = "Carla/Maps/Town01_Opt"
-        clock = [0.0]
-        with patch.dict(sys.modules, {"carla": fake_carla}), patch.object(worker.time, "time", side_effect=lambda: clock[0]), \
-                patch.object(worker.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+        with patch.object(worker, "probe_carla", return_value={"ok": True, "map": "Town01_Opt"}):
             self.assertFalse(worker._wait_map(
                 "localhost", 2000, "Town01", timeout=1))
             self.assertTrue(worker._wait_map(

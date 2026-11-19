@@ -42,8 +42,6 @@ def main():
     if any(name not in installed for name in maps):
         parser.error("Every requested map must be installed")
     os.environ["CARLA_ROOT"] = options.carla_root
-    sys.path.append(str(Path(options.carla_root) / "PythonAPI" / "carla"))
-    import carla
 
     out = Path(options.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -65,19 +63,14 @@ def main():
             print(f"\nREAL MAP SMOKE {name} ({len(results) + 1}/{len(maps)})", flush=True)
             try:
                 worker.ensure_carla(args, boot_map=name)
-                client = carla.Client(args.host, args.port)
-                client.set_timeout(30)
-                world = client.get_world()
-                actual = normalize_map_name(world.get_map().name)
+                route = worker.probe_carla(args.host, args.port, 30, name, fail_on_mismatch=True, route=True)
+                if not route.get("ok"):
+                    raise RuntimeError(route.get("reason", "Isolated route probe failed"))
+                actual = normalize_map_name(route["map"])
                 if actual != name:
                     raise RuntimeError(f"Wrong map: expected {name}, got {actual}")
-                points = world.get_map().get_spawn_points()
-                if len(points) < 2:
-                    raise RuntimeError("The map has fewer than two spawn points")
-                start = points[0]
-                goal = max(points[1:], key=lambda point: point.location.distance(start.location))
                 content = {
-                    "map": {"name": name}, "route": {"start": transform(start), "goal": transform(goal), "goal_tolerance_m": 5},
+                    "map": {"name": name}, "route": {"start": route["start"], "goal": route["goal"], "goal_tolerance_m": 5},
                     "weather": {"preset": "ClearNoon"}, "ego_vehicle": {"blueprint": "vehicle.tesla.model3", "role_name": "hero", "initial_speed_kmh": 10},
                     "actors": [], "events": [], "traffic": {},
                     "execution": {"seed": 42, "warmup_s": 0.1, "timeout_s": 10, "fixed_delta_seconds": 0.05},
@@ -85,9 +78,6 @@ def main():
                 package = {"runnable": True, "resolvedContent": content, "locations": [], "issues": [],
                            "map": {"name": name, "carlaVersion": "0.9.16"}, "scenarioVersionId": str(uuid.uuid4()),
                            "contentHash": "local-map-smoke-only", "scenarioCode": f"MAP-SMOKE-{name}", "versionNumber": 1}
-                # Do not retain a client's episode across a native server restart.
-                del world, client
-                gc.collect()
                 path, _ = worker.record_run(package, "normal", args)
                 records = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
                 ticks = [record for record in records if record["kind"] == "tick"]
@@ -98,7 +88,7 @@ def main():
                 distance = math.dist((first["x"], first["y"]), (last["x"], last["y"]))
                 if distance < 0.05:
                     raise RuntimeError("The Ego did not move during the real map smoke recording")
-                entry = {"map": name, "actualMap": actual, "spawnPointCount": len(points), "smokeOk": True,
+                entry = {"map": name, "actualMap": actual, "spawnPointCount": route["spawnPointCount"], "smokeOk": True,
                          "tickCount": len(ticks), "egoDistanceM": round(distance, 3), "outcome": end["outcome"], "telemetry": str(path)}
             except Exception as error:
                 entry = {"map": name, "smokeOk": False, "error": str(error)}

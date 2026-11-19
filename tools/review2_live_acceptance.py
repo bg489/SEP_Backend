@@ -131,8 +131,6 @@ def main():
     parser.add_argument("--no-video", action="store_true", help="Diagnostic only; acceptance will remain incomplete without video")
     arguments = parser.parse_args()
     os.environ["CARLA_ROOT"] = arguments.carla_root
-    sys.path.append(str(Path(arguments.carla_root) / "PythonAPI" / "carla"))
-    import carla
     out = Path(arguments.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     args = SimpleNamespace(api=arguments.api, carla_root=arguments.carla_root, host="127.0.0.1", port=arguments.port,
@@ -161,12 +159,10 @@ def main():
             print(f"REAL FULL ROUTE {map_name} ({len(evidence)+1}/{len(arguments.maps)})", flush=True)
             try:
                 worker.ensure_carla(args, boot_map=map_name)
-                client = carla.Client(args.host, args.port)
-                client.set_timeout(60)
-                world = client.get_world()
-                start, goal, actor = short_route(world, carla)
-                del world, client
-                gc.collect()
+                route = worker.probe_carla(args.host, args.port, 60, map_name, fail_on_mismatch=True, route=True)
+                if not route.get("ok"):
+                    raise RuntimeError(route.get("reason", "Isolated route probe failed"))
+                start, goal, actor = route["start"], route["goal"], route["actor"]
                 label = f"Review2 {map_name} {uuid.uuid4().hex[:6]}"
                 scenario_id, version_id, content = create_published_scenario(arguments.api, map_name, start, goal, actor, label)
                 entry.update(scenarioId=scenario_id, versionId=version_id)

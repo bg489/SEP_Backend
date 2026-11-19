@@ -176,16 +176,32 @@ def simulated_pass_telemetry(run_id: str, duration_s: float = 8.0) -> str:
 
 
 def carla_ping(host: str, port: int, timeout: float = 5.0) -> bool:
+    # Version RPC is isolated too: a long-lived queue process never owns CARLA
+    # native clients that could outlive a simulator restart.
+    return bool(probe_carla(host, port, timeout).get("ok"))
+
+
+def probe_carla(host, port, timeout, map_name="", *, fail_on_mismatch=False, route=False):
+    command = [sys.executable, "-u", os.path.join(ROOT, "tools", "carla_probe.py"),
+               "--host", host, "--port", str(port), "--timeout", str(timeout)]
+    if map_name:
+        command += ["--map", normalize_map_name(map_name)]
+    if fail_on_mismatch:
+        command.append("--fail-on-mismatch")
+    if route:
+        command.append("--route")
     try:
-        sys.path.append(os.path.join(os.environ.get(
-            "CARLA_ROOT", ""), "PythonAPI", "carla"))
-        import carla
-        client = carla.Client(host, port)
-        client.set_timeout(timeout)
-        client.get_server_version()
-        return True
-    except Exception:
-        return False
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=timeout + 10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        marker = next((line for line in reversed(result.stdout.splitlines()) if line.startswith("ASX_CARLA_PROBE:")), None)
+        if marker is None:
+            return {"ok": False, "reason": f"CARLA probe exited {result.returncode} without a result"}
+        observed = json.loads(marker[len("ASX_CARLA_PROBE:"):])
+        if result.returncode != 0:
+            observed["ok"] = False
+        return observed
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        return {"ok": False, "reason": f"CARLA probe failed: {error}"}
 
 
 def kill_carla(root: str, port: int = 2000):
@@ -205,7 +221,7 @@ def kill_carla(root: str, port: int = 2000):
         )
         subprocess.run(
             ["powershell", "-NoProfile", "-Command", command],
-            check=False,
+            check=False, timeout=20, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     else:
         raise RuntimeError(
@@ -340,32 +356,13 @@ def start_carla(args, boot_map: str | None = None) -> str:
 
 
 def _wait_map(host: str, port: int, map_name: str, timeout: float = 60.0, fail_on_mismatch: bool = False) -> bool:
-    """True nếu server đã ở đúng map (tránh gọi load_world)."""
+    """Wait for one isolated inspection to exit before starting a recorder."""
     if not map_name:
         return True
-    expected = normalize_map_name(map_name)
-    try:
-        sys.path.append(os.path.join(os.environ.get(
-            "CARLA_ROOT", ""), "PythonAPI", "carla"))
-        import carla  # type: ignore
-    except Exception:
-        return False
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            client = carla.Client(host, port)
-            client.set_timeout(5.0)
-            name = client.get_world().get_map().name.replace("\\", "/")
-            if normalize_map_name(name) == expected:
-                print(f"  map confirmed: {name}")
-                return True
-            print(f"  waiting map {map_name} (now {name})...")
-            if fail_on_mismatch:
-                return False
-        except Exception as ex:  # noqa: BLE001
-            print(f"  waiting map: {ex}")
-        time.sleep(3)
-    return False
+    observed = probe_carla(host, port, timeout, map_name, fail_on_mismatch=fail_on_mismatch)
+    matched = bool(observed.get("ok") and normalize_map_name(observed.get("map", "")) == normalize_map_name(map_name))
+    print(f"  map confirmed: {observed['map']}" if matched else f"  map probe: {observed.get('reason', 'map did not match')}")
+    return matched
 
 
 def _carla_is_offscreen() -> bool:

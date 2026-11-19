@@ -621,6 +621,39 @@ def write_progress_snapshot(progress_path, progress):
         return False
 
 
+def cleanup_recording(client, world, tm, carla, sensors, walker_ctrls, actors, original, light_overrides):
+    """Stop streaming callbacks, drain, destroy sensors first, then restore the world."""
+    errors = []
+    def attempt(label, action):
+        try:
+            action()
+        except Exception as error:
+            errors.append(f"{label}: {error}")
+    attempt("cleanup RPC timeout", lambda: client.set_timeout(5.0))
+    for light_actor, state, frozen, _ in light_overrides:
+        attempt("restore traffic light", lambda: light_actor.set_state(state))
+        attempt("restore traffic light freeze", lambda: light_actor.freeze(frozen))
+    for sensor in sensors:
+        attempt("stop sensor stream", sensor.stop)
+    for controller in walker_ctrls:
+        attempt("stop walker controller", controller.stop)
+    # A synchronous tick completes queued stream-stop commands before destroying
+    # their actors. No new recorder client is created during this teardown.
+    if sensors:
+        attempt("drain stopped sensor streams", world.tick)
+    def destroy(group):
+        commands = [carla.command.DestroyActor(actor) for actor in group if actor]
+        if commands:
+            for response in client.apply_batch_sync(commands, True):
+                if response.error:
+                    raise RuntimeError(response.error)
+    attempt("destroy sensor actors", lambda: destroy(sensors))
+    attempt("destroy scenario actors", lambda: destroy(walker_ctrls + actors))
+    attempt("stop traffic manager synchronization", lambda: tm.set_synchronous_mode(False))
+    attempt("restore world settings", lambda: world.apply_settings(original))
+    return errors
+
+
 def record(pkg, profile, out_dir, host, port, tm_port, run_id=None, seed=None,
            record_video=True, lite=False, max_sim_s=None, sut_type="behavior_agent", progress_path=None):
     """Chạy scenario trên CARLA. Trả (jsonl_path, mp4_path|None).
@@ -1079,31 +1112,14 @@ def record(pkg, profile, out_dir, host, port, tm_port, run_id=None, seed=None,
                 print(f"video {video_path} ({len(video_frames)} frames)")
         return path, video_path
     finally:
-        for light_actor, state, frozen, _ in light_overrides:
-            try:
-                light_actor.set_state(state)
-                light_actor.freeze(frozen)
-            except Exception:
-                pass
-        for s in sensors:
-            try:
-                s.stop()
-            except Exception:
-                pass
-        for ctrl in walker_ctrls:
-            try:
-                ctrl.stop()
-            except Exception:
-                pass
-        try:
-            client.apply_batch_sync([carla.command.DestroyActor(a) for a in sensors + walker_ctrls + actors if a])
-        except Exception:
-            pass
-        try:
-            tm.set_synchronous_mode(False)
-            world.apply_settings(original)
-        except Exception:
-            pass
+        active_error = sys.exc_info()[0] is not None
+        cleanup_errors = cleanup_recording(client, world, tm, carla, sensors, walker_ctrls, actors, original, light_overrides)
+        if cleanup_errors:
+            message = "CARLA cleanup incomplete: " + "; ".join(cleanup_errors)
+            if active_error:
+                print(message, file=sys.stderr, flush=True)
+            else:
+                raise RuntimeError(message)
 
 
 if __name__ == "__main__":
