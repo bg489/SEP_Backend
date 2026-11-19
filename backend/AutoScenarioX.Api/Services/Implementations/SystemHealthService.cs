@@ -6,15 +6,18 @@ namespace AutoScenarioX.Api.Services.Implementations;
 
 public sealed class SystemHealthService(IUnitOfWork uow) : ISystemHealthService
 {
-    private const int ExpectedAsxTables = 18;   // 11 bảng Flow 1 + 3 bảng Flow 2 + 4 bảng Flow 3 (migration 105)
     /// <summary>
-    /// Bảng Flow 1 tạo trong database/migrations/. So theo tên vì schema asx dùng chung với flow khác
-    /// (vd campaigns của Flow 2), nên đếm tổng số bảng sẽ báo nhầm.
+    /// All application tables created by the SQL migrations. Compare names rather than counts:
+    /// legacy tables or unrelated additions cannot compensate for a missing application table.
+    /// Repository views are not base tables and are checked separately from this inventory.
     /// </summary>
     public static readonly IReadOnlyList<string> RequiredTables =
     [
-        "app_users", "audit_logs", "import_records", "map_metadata", "scenario_drafts", "scenario_tags",
-        "scenario_versions", "scenarios", "tags", "validation_reports", "variant_batches"
+        "app_users", "audit_logs", "campaign_versions", "campaigns", "evaluations",
+        "failure_analyses", "failure_fault_runs", "failure_faults", "import_records", "map_metadata",
+        "oracle_configs", "run_telemetry", "scenario_drafts", "scenario_tags", "scenario_versions",
+        "scenarios", "similarity_analyses", "simulation_runs", "simulation_workers", "system_settings",
+        "tags", "validation_reports", "variant_batches", "violations"
     ];
 
     public async Task<HealthResponse> CheckDatabaseAsync(CancellationToken ct = default)

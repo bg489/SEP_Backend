@@ -1,5 +1,6 @@
 using AutoScenarioX.Api.Data;
 using AutoScenarioX.Api.Models.Entities;
+using AutoScenarioX.Api.Services.Implementations;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoScenarioX.Api.Tests.Data;
@@ -12,6 +13,16 @@ public class EfModelTests
 {
     private static AsxDbContext Db() => new(new DbContextOptionsBuilder<AsxDbContext>()
         .UseNpgsql("Host=localhost;Database=x").UseSnakeCaseNamingConvention().Options);
+
+    [Fact]
+    public void Health_inventory_covers_every_mapped_application_table_and_excludes_views()
+    {
+        using var db = Db();
+        var tables = db.Model.GetEntityTypes().Select(x => x.GetTableName())
+            .Where(x => x is not null).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToArray();
+
+        Assert.Equal(tables, SystemHealthService.RequiredTables.OrderBy(x => x, StringComparer.Ordinal));
+    }
 
     [Theory]
     [InlineData(typeof(Campaign), "campaigns", new[] { "id", "code", "name", "oracle_config_id", "sut_type", "strategy" })]
