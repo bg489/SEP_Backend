@@ -193,6 +193,42 @@ class WorkerTests(unittest.TestCase):
         claim.assert_called_once_with("http://fixture.invalid", None, "worker-fixture")
         start.assert_not_called()
 
+    def test_idle_once_worker_stops_and_joins_its_heartbeat_thread(self):
+        with patch.object(sys, "argv", ["campaign_worker.py", "--carla-root", str(self.root), "--once"]), \
+                patch.object(worker, "claim", return_value=None), patch.object(worker, "register_worker", return_value="worker-fixture"), \
+                patch.object(worker, "heartbeat"), patch.object(worker.threading, "Thread") as thread, \
+                patch.object(worker.threading, "Event") as stopped:
+            worker.main()
+        stopped.return_value.set.assert_called_once()
+        thread.return_value.join.assert_called_once_with(timeout=2)
+
+    def test_telemetry_upload_retries_same_original_bytes_after_transient_failure(self):
+        original = '{"kind":"end","outcome":"COMPLETED","t":8}\n'
+        result = {"verdict": "PASS"}
+        for error in (worker.urllib.error.URLError("lost response"),
+                      worker.WorkerHttpError("PUT", "/telemetry", 503, "temporary failure")):
+            with self.subTest(error=error), patch.object(worker, "request", side_effect=[error, (200, result)]) as request, \
+                    patch.object(worker.time, "sleep"):
+                self.assertEqual(worker.put_telemetry("http://fixture.invalid", "run", original), result)
+                self.assertEqual(request.call_count, 2)
+                self.assertEqual(request.call_args_list[0], request.call_args_list[1])
+
+    def test_telemetry_upload_does_not_retry_rejected_evidence_or_auth(self):
+        for status in (400, 401, 403, 404, 409, 422):
+            with self.subTest(status=status), patch.object(worker, "request", side_effect=worker.WorkerHttpError("PUT", "/telemetry", status, "rejected")) as request, \
+                    patch.object(worker.time, "sleep") as sleep:
+                with self.assertRaises(worker.WorkerHttpError):
+                    worker.put_telemetry("http://fixture.invalid", "run", "original")
+                self.assertEqual(request.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_telemetry_retry_is_bounded_and_preserves_failure(self):
+        with patch.object(worker, "request", side_effect=TimeoutError("API unreachable")) as request, patch.object(worker.time, "sleep") as sleep:
+            with self.assertRaisesRegex(TimeoutError, "API unreachable"):
+                worker.put_telemetry("http://fixture.invalid", "run", "original")
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+
     def _engine_config(self):
         path = self.root / "CarlaUE4" / "Config" / "DefaultEngine.ini"
         path.parent.mkdir(parents=True, exist_ok=True)

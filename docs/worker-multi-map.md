@@ -128,3 +128,8 @@ offline tests does not establish real simulator acceptance. Record the output
 of real map/campaign checks separately, including each map, Oracle result and
 video/telemetry artifacts. Fixture mode (`--fixture`) does not start CARLA; it
 uploads the supplied telemetry to the selected API and is not real acceptance.
+Telemetry upload retries transient network errors and HTTP 408/429/5xx at most
+three times with the exact original bytes. Authentication, validation and
+conflicting-evidence errors are reported immediately. A retry never starts a
+second simulator recording. A worker exiting after `--once` stops its heartbeat
+thread.

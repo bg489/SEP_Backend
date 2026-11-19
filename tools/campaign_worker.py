@@ -39,8 +39,14 @@ def api_base(args) -> str:
     return (args.api or os.environ.get("ASX_API") or "http://localhost:5080").rstrip("/")
 
 
+class WorkerHttpError(RuntimeError):
+    def __init__(self, method, path, status, detail):
+        self.status = status
+        super().__init__(f"{method} {path} → {status}: {detail}")
+
+
 def request(base: str, method: str, path: str, body: bytes | None = None, content_type: str | None = None):
-    token = os.environ.get("ASX_ACCESS_TOKEN")
+    token = os.environ.get("ASX_ACCESS_TOKEN", "").strip()
     headers = {"Authorization": f"Bearer {token}"} if token else {
         "X-Asx-Dev-Role": os.environ.get("ASX_DEV_ROLE", "TEST_ENGINEER")}
     if content_type:
@@ -60,7 +66,7 @@ def request(base: str, method: str, path: str, body: bytes | None = None, conten
             return resp.status, raw
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"{method} {path} → {e.code}: {detail}") from e
+        raise WorkerHttpError(method, path, e.code, detail) from e
 
 
 def claim(base: str, campaign_id: str | None, worker_id=None):
@@ -113,12 +119,20 @@ def fetch_package(base: str, scenario_version_id: str) -> dict:
 
 
 def put_telemetry(base: str, run_id: str, text: str):
-    _, data = request(
-        base, "PUT", f"/api/v1/runs/{run_id}/telemetry",
-        body=text.encode("utf-8"),
-        content_type="application/x-ndjson",
-    )
-    return data
+    # A response can be lost after the API committed the result. The API's
+    # idempotent PUT permits retrying these exact original bytes, never rerunning
+    # the simulator or replacing its evidence with a generated recording.
+    body = text.encode("utf-8")
+    for attempt in range(3):
+        try:
+            _, data = request(base, "PUT", f"/api/v1/runs/{run_id}/telemetry",
+                              body=body, content_type="application/x-ndjson")
+            return data
+        except (WorkerHttpError, urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            transient = not isinstance(error, WorkerHttpError) or error.status in (408, 429) or error.status >= 500
+            if not transient or attempt == 2:
+                raise
+            time.sleep(attempt + 1)
 
 
 def put_video(base: str, run_id: str, video_path: str):
@@ -635,6 +649,7 @@ def main():
 
     worker_id = None
     heartbeat_stop = threading.Event()
+    heartbeat_thread = None
     if not args.simulate and not args.fixture:
         worker_id = register_worker(base, args)
         heartbeat(base, worker_id, args)
@@ -644,23 +659,29 @@ def main():
                     heartbeat(base, worker_id, args)
                 except Exception as error:
                     print(f"worker heartbeat failed: {error}", file=sys.stderr)
-        threading.Thread(target=beat, daemon=True).start()
+        heartbeat_thread = threading.Thread(target=beat, daemon=True)
+        heartbeat_thread.start()
         print(f"  registered worker: {worker_id}")
 
-    while True:
-        claimed = claim(base, args.campaign_id, worker_id)
-        if claimed is None:
+    try:
+        while True:
+            claimed = claim(base, args.campaign_id, worker_id)
+            if claimed is None:
+                if args.once:
+                    print("queue empty")
+                    return
+                time.sleep(args.poll)
+                continue
+            run_one(base, claimed, args)
             if args.once:
-                print("queue empty")
                 return
-            time.sleep(args.poll)
-            continue
-        run_one(base, claimed, args)
-        if args.once:
-            return
-        if args.cooldown > 0:
-            print(f"  cooldown {args.cooldown}s before next run...")
-            time.sleep(args.cooldown)
+            if args.cooldown > 0:
+                print(f"  cooldown {args.cooldown}s before next run...")
+                time.sleep(args.cooldown)
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread:
+            heartbeat_thread.join(timeout=2)
 
 
 if __name__ == "__main__":
